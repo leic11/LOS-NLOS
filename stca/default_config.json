@@ -1,0 +1,44 @@
+{
+    "model_type": "stca",
+    "split_mode": "outdomain",
+    "data_dir": "data for sharing_csv",
+    "data_domain": "indomain",
+    "processed_npz": "static_processed_indomain.npz",
+    "processed_npz_indomain": "static_processed_indomain.npz",
+    "processed_npz_outdomain": "static_processed_outdomain.npz",
+    "test_size": 0.2,
+    "val_size": 0.2,
+    "random_seed": 42,
+    "window_size": 10,
+    "use_window": true,
+    "input_dim": 4,
+    "num_classes": 1,
+
+    "batch_size": 16,
+    "epochs": 50,
+    "learning_rate": 0.001,
+    "output_dir": "outputs/stca",
+    "device": "cpu",
+
+    "spatial_embed_dim": 64,
+    "spatial_num_heads": 1,
+    "spatial_num_layers": 1,
+    "spatial_d_ff": 128,
+    "spatial_dropout": 0.5,
+
+    "temporal_embed_dim": 64,
+    "temporal_num_layers": 1,
+    "temporal_dropout": 0.5,
+    "temporal_bidirectional": false,
+
+    "use_cross_attention": true,
+    "cross_attn_embed_dim": 64,
+    "cross_attn_num_heads": 1,
+    "cross_attn_dropout": 0.5,
+
+    "classifier_hidden_dims": [64, 32],
+    "classifier_dropout": 0.3,
+
+    "use_sparse_loss": true,
+    "sparse_weight": 1e-4
+}

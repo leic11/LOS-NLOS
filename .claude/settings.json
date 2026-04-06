@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv datasets/* .)",
+      "Bash(mv models/* .)",
+      "Bash(mv train/* .)",
+      "Bash(mv eval/* .)",
+      "Bash(mv scripts/* .)",
+      "Bash(mv STCA/* .)",
+      "Bash(rmdir STCA)",
+      "Bash(del \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\stca\\\\data_loading\\\\main.py\")",
+      "Bash(powershell -Command \"Remove-Item 'c:/Users/86195/Desktop/DevLab/stca/data_loading/main.py' -Force; echo 'Deleted'\")",
+      "Bash(dir \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\data for sharing_csv\"/*.csv)"
+    ]
+  }
+}
