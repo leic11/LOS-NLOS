@@ -2,11 +2,12 @@
 """
 标准化器模块 - 负责特征标准化
 """
-import logging
 import numpy as np
 from typing import Dict
 
-logger = logging.getLogger(__name__)
+from utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class UnifiedScaler:

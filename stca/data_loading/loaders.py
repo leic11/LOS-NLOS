@@ -2,12 +2,13 @@
 """
 数据加载器模块 - 负责 CSV 文件发现和加载
 """
-import logging
 from pathlib import Path
 from typing import Dict, List
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class CSVLoader:

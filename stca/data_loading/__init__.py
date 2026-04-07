@@ -1,26 +1,16 @@
 """
-STCA Data Preprocessing Package
+STCA 数据预处理包
 
-This package provides a modular, testable data preprocessing pipeline
-for GNSS NLOS signal classification using the STCA model.
+提供用于 STCA 模型的模块化数据预处理流程。
 
-Modules:
-    - constants: Configuration constants
-    - loaders: CSV file loading and merging
-    - filters: Outlier filtering and label mapping
-    - windowers: Temporal and spatial window generation
-    - splitters: Dataset splitting (indomain/outdomain)
-    - normalizers: Unified feature normalization
-    - main: StaticPreprocessor facade class
-
-Example:
+示例:
     >>> from data_loading import StaticPreprocessor
     >>> preprocessor = StaticPreprocessor(data_dir="path/to/data")
     >>> data = preprocessor.process_stca(split_mode="outdomain")
     >>> preprocessor.save_processed(data, "output.npz")
 """
-from main import StaticPreprocessor
-from constants import (
+from .main import StaticPreprocessor
+from .constants import (
     DEFAULT_FEATURE_COLS,
     DEFAULT_WINDOW_SIZE,
     DEFAULT_MAX_SATELLITES,

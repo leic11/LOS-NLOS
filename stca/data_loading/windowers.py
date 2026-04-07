@@ -2,7 +2,6 @@
 """
 窗口生成器模块 - 负责生成时间通道和空间通道输入
 """
-import logging
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
@@ -14,8 +13,9 @@ from constants import (
     DEFAULT_MAX_SATELLITES,
     DEFAULT_WINDOW_SIZE,
 )
+from utils.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class WindowGenerator:

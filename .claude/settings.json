@@ -10,7 +10,15 @@
       "Bash(rmdir STCA)",
       "Bash(del \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\stca\\\\data_loading\\\\main.py\")",
       "Bash(powershell -Command \"Remove-Item 'c:/Users/86195/Desktop/DevLab/stca/data_loading/main.py' -Force; echo 'Deleted'\")",
-      "Bash(dir \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\data for sharing_csv\"/*.csv)"
+      "Bash(dir \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\data for sharing_csv\"/*.csv)",
+      "Bash(ls /c/Users/86195/Desktop/DevLab/\"data for sharing_csv\"/*.csv)",
+      "Bash(grep -n \"from \\\\.\" /c/Users/86195/Desktop/DevLab/stca/data_loading/*.py)",
+      "Bash(ls -la /c/Users/86195/Desktop/DevLab/outputs/logs/*.log)",
+      "Bash(ls -lh /c/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)",
+      "Bash(ls -l /c/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading"
     ]
   }
 }

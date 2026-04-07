@@ -19,6 +19,7 @@ LABEL_MAP = {-1: 0, 1: 1}  # NLOS→0, LOS→1
 DEFAULT_LOCATION_PREFIXES = ["P2", "P3", "P4", "P5", "P6", "P7", "P8"]
 
 # 数据划分默认值
+DEFAULT_SPLIT_MODE = "outdomain"  # 默认划分模式：indomain 或 outdomain
 DEFAULT_TEST_SIZE = 0.3
 DEFAULT_VAL_SIZE = 0.2
 DEFAULT_RANDOM_SEED = 42

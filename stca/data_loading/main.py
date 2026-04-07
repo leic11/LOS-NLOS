@@ -1,50 +1,58 @@
 # main.py
 """
-STCA Data Preprocessor - Refactored Version (Facade Pattern)
+STCA 数据预处理器 - 重构版（外观模式）
 
-This module orchestrates the data preprocessing pipeline by composing
-smaller, single-responsibility modules.
+本模块通过组合更小、更专一的功能模块来编排数据预处理流程。
 """
 import os
-import logging
-from typing import Dict, List, Optional, Tuple
+import sys
+from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+# 将项目根目录（DevLab）添加到 sys.path，支持导入 utils 模块
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(os.path.dirname(_current_dir))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+if _current_dir not in sys.path:
+    sys.path.insert(0, _current_dir)
+
 from constants import (
-    DEFAULT_FEATURE_COLS, LABEL_COL, LABEL_MAP,
-    DEFAULT_LOCATION_PREFIXES, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
+    DEFAULT_FEATURE_COLS,
+    DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
     DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
     PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
+    OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
 )
 from loaders import CSVLoader
 from filters import DataFilter
 from windowers import WindowGenerator
 from splitters import DataSplitter
 from normalizers import UnifiedScaler
+from utils.logger_config import setup_logger
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class StaticPreprocessor:
-    """STCA Data Preprocessor using Facade Pattern."""
+    """STCA 数据预处理器（外观模式）"""
 
     def __init__(
         self,
         data_dir: str,
-        feature_cols: Optional[List[str]] = None,
+        feature_cols: List[str] = DEFAULT_FEATURE_COLS,
         test_size: float = DEFAULT_TEST_SIZE,
         val_size: float = DEFAULT_VAL_SIZE,
         random_seed: int = DEFAULT_RANDOM_SEED,
     ):
         self.data_dir = data_dir
-        self.feature_cols = feature_cols or DEFAULT_FEATURE_COLS
+        self.feature_cols = feature_cols
         self.test_size = test_size
         self.val_size = val_size
         self.random_seed = random_seed
 
-        # Compose modules
+        # 组合各模块
         self.loader = CSVLoader(data_dir, DEFAULT_LOCATION_PREFIXES)
         self.filter = DataFilter(self.feature_cols, PRE_FILTER_THRESHOLD, PR_RATE_INVALID)
         self.windower = WindowGenerator(
@@ -56,11 +64,11 @@ class StaticPreprocessor:
         self.scaler: Optional[UnifiedScaler] = None
 
     def load_and_merge_csv(self) -> pd.DataFrame:
-        """Delegate to CSVLoader."""
+        """委托给 CSVLoader 加载并合并数据"""
         return self.loader.load_and_merge()
 
     def filter_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Delegate to DataFilter."""
+        """委托给 DataFilter 过滤异常值"""
         return self.filter.filter_outliers(df)
 
     def _get_split_masks(
@@ -68,9 +76,9 @@ class StaticPreprocessor:
         locations: np.ndarray,
         split_mode: str
     ) -> Dict[str, np.ndarray]:
-        """Get boolean masks for train/val/test split."""
+        """获取训练集/验证集/测试集的划分掩码"""
         if split_mode == "indomain":
-            # Indomain: 每个地点内随机划分，无法直接用 mask 表示
+            # Indomain：每个地点内随机划分，无法直接用 mask 表示
             # 返回索引数组
             y = np.zeros(len(locations), dtype=np.int32)
             X_dummy = np.arange(len(locations))
@@ -83,43 +91,39 @@ class StaticPreprocessor:
                 "test": X_test.flatten()
             }
         else:
-            # Outdomain: 按地点划分，可以直接用 mask
-            train_locs = ["P2", "P3", "P4", "P8"]
-            val_locs = ["P7"]
-            test_locs = ["P5", "P6"]
-
+            # Outdomain：按地点划分，可以直接用 mask
             return {
-                "train": np.isin(locations, train_locs),
-                "val": np.isin(locations, val_locs),
-                "test": np.isin(locations, test_locs)
+                "train": np.isin(locations, OUTDOMAIN_TRAIN_LOCATIONS),
+                "val": np.isin(locations, OUTDOMAIN_VAL_LOCATIONS),
+                "test": np.isin(locations, OUTDOMAIN_TEST_LOCATIONS)
             }
 
     def process_stca(
         self,
         window_size: int = DEFAULT_WINDOW_SIZE,
         max_satellites: int = DEFAULT_MAX_SATELLITES,
-        split_mode: str = "indomain",
+        split_mode: str = DEFAULT_SPLIT_MODE,
     ) -> Dict:
-        """Orchestrate the complete preprocessing pipeline."""
-        # 1. Load
+        """执行完整的预处理流程"""
+        # 1. 加载数据
         df = self.loader.load_and_merge()
 
-        # 2. Filter
+        # 2. 过滤异常值
         df = self.filter.filter_outliers(df)
 
-        # 3. Generate STCA inputs
+        # 3. 生成 STCA 输入（时间通道 + 空间通道）
         X_temporal, X_spatial, y, locations = self.windower.generate_stca_inputs(df)
 
-        # 4. Split dataset
+        # 4. 划分数据集
         indices = self._get_split_masks(locations, split_mode)
 
-        # 5. Normalize (fit on training set only)
+        # 5. 标准化（仅使用训练集拟合）
         self.scaler = UnifiedScaler.from_data(
             X_temporal[indices["train"]],
             X_spatial[indices["train"]]
         )
 
-        # 6. Transform all data
+        # 6. 变换所有数据
         X_train_temporal = self.scaler.transform(X_temporal[indices["train"]])
         X_val_temporal = self.scaler.transform(X_temporal[indices["val"]])
         X_test_temporal = self.scaler.transform(X_temporal[indices["test"]])
@@ -133,18 +137,17 @@ class StaticPreprocessor:
         y_test = y[indices["test"]]
 
         logger.info(
-            f"STCA Split - Train: {len(indices['train'])}, "
-            f"Val: {len(indices['val'])}, Test: {len(indices['test'])}"
+            f"STCA 划分 - 训练集：{len(indices['train'])}, "
+            f"验证集：{len(indices['val'])}, 测试集：{len(indices['test'])}"
         )
 
-        # 7. Determine location info
+        # 7. 确定地点信息
         if split_mode == "indomain":
             train_locations = val_locations = test_locations = "indomain"
         else:
-            unique_locs = sorted(np.unique(locations))
-            train_locations = unique_locs[:4]
-            val_locations = [unique_locs[4]]
-            test_locations = unique_locs[5:]
+            train_locations = OUTDOMAIN_TRAIN_LOCATIONS
+            val_locations = OUTDOMAIN_VAL_LOCATIONS
+            test_locations = OUTDOMAIN_TEST_LOCATIONS
 
         return {
             "X_train_temporal": X_train_temporal,
@@ -167,7 +170,7 @@ class StaticPreprocessor:
         }
 
     def save_processed(self, data: Dict, output_path: str) -> None:
-        """Save processed data to .npz file."""
+        """将处理后的数据保存为 .npz 文件"""
         scaler = data.get("scaler")
 
         save_dict = {
@@ -189,11 +192,11 @@ class StaticPreprocessor:
         }
 
         np.savez(output_path, **save_dict)
-        logger.info(f"Saved processed data to {output_path}")
+        logger.info(f"已保存处理后的数据到 {output_path}")
 
     @staticmethod
     def load_processed(npz_path: str) -> Dict:
-        """Load processed data from .npz file."""
+        """从 .npz 文件加载处理后的数据"""
         loader = np.load(npz_path, allow_pickle=True)
 
         scaler_mean = loader.get("scaler_mean")
@@ -223,38 +226,43 @@ class StaticPreprocessor:
 
 
 def main():
-    """Command-line entry point."""
+    """命令行入口"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="STCA Data Preprocessor")
+    parser = argparse.ArgumentParser(description="STCA 数据预处理器")
     parser.add_argument(
         "--split-mode",
         type=str,
-        default="indomain",
-        choices=["indomain", "outdomain"]
+        default=DEFAULT_SPLIT_MODE,
+        choices=["indomain", "outdomain"],
+        help="数据划分模式：indomain（内域）或 outdomain（跨域）"
     )
-    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--output", type=str, default=None, help="输出文件路径")
     parser.add_argument(
         "--window-size",
         type=int,
-        default=DEFAULT_WINDOW_SIZE
+        default=DEFAULT_WINDOW_SIZE,
+        help="时间窗口大小"
     )
     parser.add_argument(
         "--max-satellites",
         type=int,
-        default=DEFAULT_MAX_SATELLITES
+        default=DEFAULT_MAX_SATELLITES,
+        help="最大卫星数"
     )
     args = parser.parse_args()
 
-    # Paths
+    # 路径设置
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(os.path.dirname(script_dir), "data for sharing_csv")
+    # 数据目录在 stca 的父目录下
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "data for sharing_csv")
+    # 输出目录在 stca 目录下
     output_path = args.output or os.path.join(
         os.path.dirname(script_dir),
         f"static_processed_{args.split_mode}.npz"
     )
 
-    # Execute preprocessing
+    # 执行预处理
     preprocessor = StaticPreprocessor(data_dir=data_dir)
     data = preprocessor.process_stca(
         window_size=args.window_size,
@@ -263,9 +271,9 @@ def main():
     )
 
     preprocessor.save_processed(data, output_path)
-    print(f"\nProcessed data saved to {output_path}")
-    print(f"Temporal shapes - Train: {data['X_train_temporal'].shape}")
-    print(f"Spatial shapes - Train: {data['X_train_spatial'].shape}")
+    print(f"\n处理后的数据已保存到 {output_path}")
+    print(f"时间通道形状 - 训练集：{data['X_train_temporal'].shape}")
+    print(f"空间通道形状 - 训练集：{data['X_train_spatial'].shape}")
 
 
 if __name__ == "__main__":

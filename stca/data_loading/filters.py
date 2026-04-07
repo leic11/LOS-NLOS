@@ -2,7 +2,6 @@
 """
 数据过滤器模块 - 负责异常值过滤和标签映射
 """
-import logging
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Optional
@@ -14,8 +13,9 @@ from constants import (
     PRE_FILTER_THRESHOLD,
     PR_RATE_INVALID,
 )
+from utils.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class DataFilter:

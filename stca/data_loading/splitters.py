@@ -2,7 +2,6 @@
 """
 数据划分器模块 - 负责 indomain/outdomain 数据集划分
 """
-import logging
 import numpy as np
 from typing import Tuple
 
@@ -11,8 +10,9 @@ from constants import (
     OUTDOMAIN_VAL_LOCATIONS,
     OUTDOMAIN_TEST_LOCATIONS,
 )
+from utils.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class DataSplitter:
