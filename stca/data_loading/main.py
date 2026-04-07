@@ -63,24 +63,36 @@ class StaticPreprocessor:
         """Delegate to DataFilter."""
         return self.filter.filter_outliers(df)
 
-    def _get_split_indices(
+    def _get_split_masks(
         self,
         locations: np.ndarray,
         split_mode: str
     ) -> Dict[str, np.ndarray]:
-        """Get split indices for train/val/test."""
-        y = np.zeros(len(locations), dtype=np.int32)
-
+        """Get boolean masks for train/val/test split."""
         if split_mode == "indomain":
-            X_train, X_val, X_test, _, _, _ = self.splitter.split_indomain(
-                np.arange(len(locations)), y, locations, self.test_size
+            # Indomain: 每个地点内随机划分，无法直接用 mask 表示
+            # 返回索引数组
+            y = np.zeros(len(locations), dtype=np.int32)
+            X_dummy = np.arange(len(locations))
+            X_train, X_val, X_test, *_ = self.splitter.split_indomain(
+                X_dummy.reshape(-1, 1), y, locations, self.test_size
             )
+            return {
+                "train": X_train.flatten(),
+                "val": X_val.flatten(),
+                "test": X_test.flatten()
+            }
         else:
-            X_train, X_val, X_test, _, _, _ = self.splitter.split_outdomain(
-                np.arange(len(locations)), y, locations
-            )
+            # Outdomain: 按地点划分，可以直接用 mask
+            train_locs = ["P2", "P3", "P4", "P8"]
+            val_locs = ["P7"]
+            test_locs = ["P5", "P6"]
 
-        return {"train": X_train, "val": X_val, "test": X_test}
+            return {
+                "train": np.isin(locations, train_locs),
+                "val": np.isin(locations, val_locs),
+                "test": np.isin(locations, test_locs)
+            }
 
     def process_stca(
         self,
@@ -99,7 +111,7 @@ class StaticPreprocessor:
         X_temporal, X_spatial, y, locations = self.windower.generate_stca_inputs(df)
 
         # 4. Split dataset
-        indices = self._get_split_indices(locations, split_mode)
+        indices = self._get_split_masks(locations, split_mode)
 
         # 5. Normalize (fit on training set only)
         self.scaler = UnifiedScaler.from_data(

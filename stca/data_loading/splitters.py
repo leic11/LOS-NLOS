@@ -4,7 +4,13 @@
 """
 import logging
 import numpy as np
-from typing import List, Tuple, Optional, Dict
+from typing import Tuple
+
+from constants import (
+    OUTDOMAIN_TRAIN_LOCATIONS,
+    OUTDOMAIN_VAL_LOCATIONS,
+    OUTDOMAIN_TEST_LOCATIONS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +28,27 @@ class DataSplitter:
         y: np.ndarray,
         locations: np.ndarray,
         test_size: float = 0.3,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        X_spatial: np.ndarray = None,
+    ) -> Tuple:
         """
         内域数据集划分：每个地点内 70% 训练 / 30% 测试，再从训练集划分 20% 验证
 
         Args:
-            X: 特征数组
+            X: 时间特征数组 (N, window_size, 4)
             y: 标签数组
             locations: 地点数组
             test_size: 测试集比例
+            X_spatial: 空间特征数组 (N, max_satellites, 4)，可选
 
         Returns:
-            X_train, X_val, X_test, y_train, y_val, y_test
+            如果 X_spatial 为 None: X_train, X_val, X_test, y_train, y_val, y_test
+            如果 X_spatial 提供：返回 (X_train, X_val, X_test, X_spatial_train, X_spatial_val, X_spatial_test, y_train, y_val, y_test)
         """
         unique_locations = np.unique(locations)
         logger.info(f"In-domain split: {len(unique_locations)} locations")
 
         X_train_list, X_test_list = [], []
+        X_spatial_train_list, X_spatial_test_list = [], [] if X_spatial is not None else None
         y_train_list, y_test_list = [], []
 
         for loc in unique_locations:
@@ -62,6 +72,11 @@ class DataSplitter:
             y_train_list.append(y_loc[train_val_idx])
             y_test_list.append(y_loc[test_idx])
 
+            if X_spatial is not None:
+                X_spatial_loc = X_spatial[loc_mask]
+                X_spatial_train_list.append(X_spatial_loc[train_val_idx])
+                X_spatial_test_list.append(X_spatial_loc[test_idx])
+
             logger.info(
                 f"  {loc}: train={len(train_val_idx)}, test={len(test_idx)}"
             )
@@ -70,6 +85,9 @@ class DataSplitter:
         X_test = np.concatenate(X_test_list, axis=0)
         y_train = np.concatenate(y_train_list, axis=0)
         y_test = np.concatenate(y_test_list, axis=0)
+
+        X_spatial_train = np.concatenate(X_spatial_train_list, axis=0) if X_spatial is not None else None
+        X_spatial_test = np.concatenate(X_spatial_test_list, axis=0) if X_spatial is not None else None
 
         # 从训练集中划分 20% 作为验证集
         n_val = int(len(X_train) * self.val_size)
@@ -84,11 +102,16 @@ class DataSplitter:
         X_train = X_train[train_idx]
         y_train = y_train[train_idx]
 
+        X_spatial_val = X_spatial_train[val_idx] if X_spatial is not None else None
+        X_spatial_train = X_spatial_train[train_idx] if X_spatial is not None else None
+
         logger.info(
             f"In-domain - Train: {X_train.shape[0]} | "
             f"Val: {X_val.shape[0]} | Test: {X_test.shape[0]}"
         )
 
+        if X_spatial is not None:
+            return (X_train, X_val, X_test, X_spatial_train, X_spatial_val, X_spatial_test, y_train, y_val, y_test)
         return X_train, X_val, X_test, y_train, y_val, y_test
 
     def split_outdomain(
@@ -96,32 +119,28 @@ class DataSplitter:
         X: np.ndarray,
         y: np.ndarray,
         locations: np.ndarray,
-        train_locations: List[str] = None,
-        val_locations: List[str] = None,
-        test_locations: List[str] = None,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        X_spatial: np.ndarray = None,
+    ) -> Tuple:
         """
-        外域数据集划分：P2-P5 训练，P6 验证，P7-P8 测试
+        外域数据集划分：P2,P3,P4,P8 训练，P7 验证，P5,P6 测试（由 constants.py 配置）
 
         Args:
-            X: 特征数组
+            X: 时间特征数组 (N, window_size, 4)
             y: 标签数组
             locations: 地点数组
-            train_locations: 训练地点列表
-            val_locations: 验证地点列表
-            test_locations: 测试地点列表
+            X_spatial: 空间特征数组 (N, max_satellites, 4)，可选
 
         Returns:
-            X_train, X_val, X_test, y_train, y_val, y_test
+            如果 X_spatial 为 None: X_train, X_val, X_test, y_train, y_val, y_test
+            如果 X_spatial 提供：返回 (X_train, X_val, X_test, X_spatial_train, X_spatial_val, X_spatial_test, y_train, y_val, y_test)
         """
         unique_locations = sorted(np.unique(locations))
+        logger.info(f"所有地点：{unique_locations}")
 
-        if train_locations is None:
-            train_locations = unique_locations[:4]  # P2-P5
-        if val_locations is None:
-            val_locations = [unique_locations[4]]  # P6
-        if test_locations is None:
-            test_locations = unique_locations[5:]  # P7-P8
+        # 直接使用 constants 中的默认配置
+        train_locations = OUTDOMAIN_TRAIN_LOCATIONS
+        val_locations = OUTDOMAIN_VAL_LOCATIONS
+        test_locations = OUTDOMAIN_TEST_LOCATIONS
 
         logger.info(
             f"Out-domain split: train={train_locations}, "
@@ -138,6 +157,10 @@ class DataSplitter:
         y_val = y[val_mask]
         X_test = X[test_mask]
         y_test = y[test_mask]
+
+        X_spatial_train = X_spatial[train_mask] if X_spatial is not None else None
+        X_spatial_val = X_spatial[val_mask] if X_spatial is not None else None
+        X_spatial_test = X_spatial[test_mask] if X_spatial is not None else None
 
         # 详细统计
         for loc in train_locations:
@@ -166,4 +189,6 @@ class DataSplitter:
             f"Val: {X_val.shape[0]} | Test: {X_test.shape[0]}"
         )
 
+        if X_spatial is not None:
+            return (X_train, X_val, X_test, X_spatial_train, X_spatial_val, X_spatial_test, y_train, y_val, y_test)
         return X_train, X_val, X_test, y_train, y_val, y_test

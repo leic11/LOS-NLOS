@@ -7,7 +7,13 @@ import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
 
-from constants import DEFAULT_FEATURE_COLS, LABEL_COL, LABEL_MAP
+from constants import (
+    DEFAULT_FEATURE_COLS,
+    LABEL_COL,
+    LABEL_MAP,
+    DEFAULT_MAX_SATELLITES,
+    DEFAULT_WINDOW_SIZE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +24,8 @@ class WindowGenerator:
     def __init__(
         self,
         feature_cols: List[str] = None,
-        window_size: int = 10,
-        max_satellites: int = 30,
+        window_size: int = DEFAULT_WINDOW_SIZE,
+        max_satellites: int = DEFAULT_MAX_SATELLITES,
     ):
         self.feature_cols = feature_cols or DEFAULT_FEATURE_COLS
         self.window_size = window_size
@@ -30,7 +36,7 @@ class WindowGenerator:
         df: pd.DataFrame,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        生成时间通道输入（按 PRN 分组滑动窗口）
+        生成时间通道输入（按 location+PRN 分组滑动窗口）
 
         Args:
             df: 预处理后的 DataFrame
@@ -58,46 +64,55 @@ class WindowGenerator:
         locations_list = []
         window_end_times = []
 
-        # 按 PRN 分组
-        unique_prns = np.unique(prn_values)
+        # 按 (location, PRN) 组合分组 - 不同地点的相同 PRN 视为独立卫星
+        unique_locations = np.unique(loc_values)
+        total_windows = 0
 
-        for prn in unique_prns:
-            prn_mask = prn_values == prn
-            prn_indices = np.where(prn_mask)[0]
+        for loc in unique_locations:
+            loc_mask = loc_values == loc
+            loc_prn_values = prn_values[loc_mask]
+            unique_prns_in_loc = np.unique(loc_prn_values)
 
-            if len(prn_indices) < self.window_size:
-                continue
+            for prn in unique_prns_in_loc:
+                # 同时匹配地点和 PRN
+                combined_mask = (loc_values == loc) & (prn_values == prn)
+                prn_indices = np.where(combined_mask)[0]
 
-            # 提取该 PRN 的数据
-            prn_gps_times = gps_times[prn_indices]
-            prn_features = feature_data[prn_indices]
-            prn_labels = labels[prn_indices]
-            prn_locations = loc_values[prn_indices]
+                if len(prn_indices) < self.window_size:
+                    continue
 
-            # 按时间排序
-            sorted_order = np.argsort(prn_gps_times)
-            prn_gps_times = prn_gps_times[sorted_order]
-            prn_features = prn_features[sorted_order]
-            prn_labels = prn_labels[sorted_order]
-            prn_locations = prn_locations[sorted_order]
+                # 提取该 (location, PRN) 组合的数据
+                prn_gps_times = gps_times[prn_indices]
+                prn_features = feature_data[prn_indices]
+                prn_labels = labels[prn_indices]
+                prn_locations = loc_values[prn_indices]  # 应该全是同一个 loc
 
-            # 滑动窗口
-            for start_idx in range(len(prn_indices) - self.window_size + 1):
-                window_X = prn_features[start_idx : start_idx + self.window_size]
-                window_y = prn_labels[start_idx + self.window_size - 1]
-                window_end_time = prn_gps_times[start_idx + self.window_size - 1]
+                # 按时间排序
+                sorted_order = np.argsort(prn_gps_times)
+                prn_gps_times = prn_gps_times[sorted_order]
+                prn_features = prn_features[sorted_order]
+                prn_labels = prn_labels[sorted_order]
+                prn_locations = prn_locations[sorted_order]
 
-                X_temporal_list.append(window_X)
-                y_list.append(window_y)
-                locations_list.append(prn_locations[start_idx + self.window_size - 1])
-                window_end_times.append(window_end_time)
+                # 滑动窗口
+                for start_idx in range(len(prn_indices) - self.window_size + 1):
+                    window_X = prn_features[start_idx : start_idx + self.window_size]
+                    window_y = prn_labels[start_idx + self.window_size - 1]
+                    window_end_time = prn_gps_times[start_idx + self.window_size - 1]
+
+                    X_temporal_list.append(window_X)
+                    y_list.append(window_y)
+                    locations_list.append(prn_locations[start_idx + self.window_size - 1])
+                    window_end_times.append(window_end_time)
+
+                total_windows += max(0, len(prn_indices) - self.window_size + 1)
 
         X_temporal = np.array(X_temporal_list, dtype=np.float32)
         y = np.array(y_list, dtype=np.int32)
         locations = np.array(locations_list)
         window_end_times = np.array(window_end_times)
 
-        logger.info(f"Temporal input shape: {X_temporal.shape}")
+        logger.info(f"Temporal input shape: {X_temporal.shape} (按 location+PRN 分组，共 {total_windows} 个窗口)")
         return X_temporal, y, locations, window_end_times
 
     def generate_spatial_input(

@@ -54,11 +54,9 @@ class UnifiedScaler:
         else:
             raise ValueError(f"Unsupported input shape: {X.shape}")
 
-    def fit_transform(
-        self, X_temporal: np.ndarray, X_spatial: np.ndarray
-    ) -> "UnifiedScaler":
+    def fit(self, X_temporal: np.ndarray, X_spatial: np.ndarray) -> "UnifiedScaler":
         """
-        拟合并返回标准化器
+        拟合标准化器（仅使用训练数据）
 
         Args:
             X_temporal: 时间通道输入 (N, window_size, 4)
@@ -87,6 +85,22 @@ class UnifiedScaler:
         self.scale_ = self.stds
 
         return self
+
+    def fit_transform(
+        self, X_temporal: np.ndarray, X_spatial: np.ndarray
+    ) -> np.ndarray:
+        """
+        拟合并应用标准化变换
+
+        Args:
+            X_temporal: 时间通道输入 (N, window_size, 4)
+            X_spatial: 空间通道输入 (N, max_satellites, 4)
+
+        Returns:
+            标准化后的 X_temporal
+        """
+        self.fit(X_temporal, X_spatial)
+        return self.transform(X_temporal)
 
     @classmethod
     def from_data(cls, X_temporal: np.ndarray, X_spatial: np.ndarray) -> "UnifiedScaler":

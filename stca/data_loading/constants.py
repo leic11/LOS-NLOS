@@ -25,8 +25,13 @@ DEFAULT_RANDOM_SEED = 42
 
 # STCA 模型输入参数
 DEFAULT_WINDOW_SIZE = 10      # 论文最优值 (Section IV-F)
-DEFAULT_MAX_SATELLITES = 30   # 单历元最大卫星数
+DEFAULT_MAX_SATELLITES = 20   # 单历元最大卫星数（实际数据通常 ≤ 20）
 
 # 异常值过滤阈值
 PRE_FILTER_THRESHOLD = 100    # Pseudorange_residual 阈值
 PR_RATE_INVALID = 9999.0      # Pr_rate_consitency 无效值
+
+# Outdomain 划分地点配置
+OUTDOMAIN_TRAIN_LOCATIONS = ["P2", "P3", "P4", "P8"]
+OUTDOMAIN_VAL_LOCATIONS = ["P7"]
+OUTDOMAIN_TEST_LOCATIONS = ["P5", "P6"]
