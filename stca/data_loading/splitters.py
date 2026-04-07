@@ -5,7 +5,7 @@
 import numpy as np
 from typing import Tuple
 
-from constants import (
+from .constants import (
     OUTDOMAIN_TRAIN_LOCATIONS,
     OUTDOMAIN_VAL_LOCATIONS,
     OUTDOMAIN_TEST_LOCATIONS,

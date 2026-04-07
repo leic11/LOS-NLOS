@@ -15,10 +15,15 @@
       "Bash(grep -n \"from \\\\.\" /c/Users/86195/Desktop/DevLab/stca/data_loading/*.py)",
       "Bash(ls -la /c/Users/86195/Desktop/DevLab/outputs/logs/*.log)",
       "Bash(ls -lh /c/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)",
-      "Bash(ls -l /c/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)"
+      "Bash(ls -l /c/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)",
+      "Bash(set PYTHONUTF8=1)",
+      "Bash(PYTHONPATH=/c/Users/86195/Desktop/DevLab python -c \"from modules.train_static import *; print\\('train_static imports OK'\\)\")",
+      "Bash(ls /c/Users/86195/Desktop/DevLab/stca/*.py)",
+      "Bash(pip install:*)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading"
+      "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading",
+      "\\tmp"
     ]
   }
 }

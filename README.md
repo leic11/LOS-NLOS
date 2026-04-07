@@ -22,8 +22,16 @@ DevLab/
 ├── data for sharing_csv/          # 原始 GNSS 静态数据
 │   └── P2.csv ~ P8.csv            # 各测站原始观测数据
 │
-├── stca/                          # 核心代码（扁平化结构）
-│   ├── default_config.json        # 默认配置文件
+├── stca/                          # 核心代码目录
+│   ├── modules/                   # 模块化代码（新）
+│   │   ├── constants.py           # 默认参数配置
+│   │   ├── spatial_encoder.py     # 空间编码器 (AAM)
+│   │   ├── temporal_encoder.py    # 时序编码器 (LSTM)
+│   │   ├── cross_attention.py     # 交叉注意力模块
+│   │   ├── sparse_representation.py # 稀疏表示模块
+│   │   ├── trainer.py             # 训练器类
+│   │   ├── train_static.py        # 训练脚本
+│   │   └── eval_static.py         # 评估脚本
 │   ├── static_preprocess.py       # 数据预处理 (CSV → 特征工程 → npz)
 │   ├── plot_distribution.py       # 数据分布可视化
 │   ├── stca_model.py              # 完整 STCA 模型
@@ -60,14 +68,11 @@ pip install -r requirements.txt
 ### 2. 训练模型
 
 ```bash
-# 进入 stca 目录
-cd stca
+# 使用默认参数训练
+python -m modules.train_static
 
-# 使用默认配置训练
-python -m train_static
-
-# 指定配置文件
-python -m train_static --config default_config.json
+# 指定数据划分模式
+python -m modules.train_static --split-mode outdomain
 ```
 
 ### 3. 评估模型
@@ -299,15 +304,21 @@ STCA 模型采用双通道输入设计，同时捕获**时序特征**和**空间
 
 ### 模型配置参数
 
+所有默认参数在 `modules/constants.py` 中定义：
+
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| input_dim | 输入特征维度 | 4 |
-| spatial_embed_dim | 空间嵌入维度 | 64 |
-| temporal_embed_dim | 时间嵌入维度 | 64 |
-| use_cross_attention | 是否使用交叉注意力 | true |
-| sparse_weight | L1 正则化权重 | 1e-4 |
-| batch_size | 批大小 | 16 |
-| learning_rate | 学习率 | 1e-3 |
+| SPATIAL_EMBED_DIM | 空间嵌入维度 | 64 |
+| SPATIAL_NUM_HEADS | 注意力头数 | 1 |
+| SPATIAL_DROPOUT | 空间编码器 Dropout | 0.5 |
+| TEMPORAL_EMBED_DIM | 时间嵌入维度 | 64 |
+| TEMPORAL_NUM_LAYERS | LSTM 层数 | 1 |
+| TEMPORAL_DROPOUT | 时间编码器 Dropout | 0.5 |
+| CROSS_ATTN_EMBED_DIM | 交叉注意力维度 | 64 |
+| SPARSE_EMBED_DIM | 稀疏表示维度 | 64 |
+| BATCH_SIZE | 批大小 | 16 |
+| EPOCHS | 训练轮数 | 50 |
+| LEARNING_RATE | 学习率 | 1e-3 |
 
 ## 📚 依赖
 

@@ -28,6 +28,10 @@ DEFAULT_RANDOM_SEED = 42
 DEFAULT_WINDOW_SIZE = 10      # 论文最优值 (Section IV-F)
 DEFAULT_MAX_SATELLITES = 20   # 单历元最大卫星数（实际数据通常 ≤ 20）
 
+# 基础数据参数
+INPUT_DIM = 4                 # 输入特征维度 (C/N0, Elevation, Azimuth, Pseudorange_residual)
+NUM_CLASSES = 2               # 类别数量 (二分类输出，1 个神经元 + sigmoid)
+
 # 异常值过滤阈值
 PRE_FILTER_THRESHOLD = 100    # Pseudorange_residual 阈值
 PR_RATE_INVALID = 9999.0      # Pr_rate_consitency 无效值

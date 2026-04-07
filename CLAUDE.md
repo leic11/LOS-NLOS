@@ -18,7 +18,7 @@ python -m static_preprocess --split-mode outdomain --generate-stca
 
 # Training
 python -m train_static
-python -m train_static --config default_config.json
+python -m modules.train_static --split-mode outdomain
 
 # Model evaluation
 python -m eval_static
@@ -31,9 +31,17 @@ python ablation_window_size.py
 
 ```
 DevLab/
-├── stca/                        # Flat code directory (all files at root level)
-│   ├── default_config.json      # Default configuration
-│   ├── static_preprocess.py     # CSV → STCA dual-input format
+├── stca/                        # 核心代码目录
+│   ├── modules/                   # 模块化代码（新）
+│   │   ├── constants.py           # 默认参数配置
+│   │   ├── spatial_encoder.py     # 空间编码器 (AAM)
+│   │   ├── temporal_encoder.py    # 时序编码器 (LSTM)
+│   │   ├── cross_attention.py     # 交叉注意力模块
+│   │   ├── sparse_representation.py # 稀疏表示模块
+│   │   ├── trainer.py             # 训练器类
+│   │   ├── train_static.py        # 训练脚本
+│   │   └── eval_static.py         # 评估脚本
+│   ├── static_preprocess.py       # 数据预处理
 │   ├── plot_distribution.py     # Data distribution visualization
 │   ├── stca_model.py            # Full STCA model
 │   ├── spatial_encoder.py       # Spatial encoder (AAM)
@@ -75,15 +83,16 @@ DevLab/
 
 ## Configuration
 
-Default config in `stca/default_config.json`. Key params:
+默认参数在 `stca/modules/constants.py` 中定义。关键参数：
 
-- `spatial_embed_dim`: 64
-- `temporal_embed_dim`: 64
-- `cross_attn_embed_dim`: 64
-- `sparse_embed_dim`: 32
-- `sparse_weight`: 1e-4
-- `batch_size`: 16-256
-- `learning_rate`: 1e-3
+- `SPATIAL_EMBED_DIM`: 64
+- `TEMPORAL_EMBED_DIM`: 64
+- `CROSS_ATTN_EMBED_DIM`: 64
+- `SPARSE_EMBED_DIM`: 64
+- `BATCH_SIZE`: 16
+- `LEARNING_RATE`: 1e-3
+- `SPATIAL_DROPOUT`: 0.5
+- `TEMPORAL_DROPOUT`: 0.5
 
 ## Debugging
 

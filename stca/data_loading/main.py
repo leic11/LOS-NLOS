@@ -18,18 +18,18 @@ if _project_root not in sys.path:
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
 
-from constants import (
+from .constants import (
     DEFAULT_FEATURE_COLS,
     DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
     DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
     PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
     OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
 )
-from loaders import CSVLoader
-from filters import DataFilter
-from windowers import WindowGenerator
-from splitters import DataSplitter
-from normalizers import UnifiedScaler
+from .loaders import CSVLoader
+from .filters import DataFilter
+from .windowers import WindowGenerator
+from .splitters import DataSplitter
+from .normalizers import UnifiedScaler
 from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)

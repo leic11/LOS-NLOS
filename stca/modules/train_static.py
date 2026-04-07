@@ -8,7 +8,7 @@
     适用于静态点 GNSS NLOS 信号的二分类任务。
 
 主要功能：
-    1. 配置管理：从 default_config.json 读取默认参数，支持 JSON 配置文件覆盖
+    1. 配置管理：从 modules/constants.py 读取默认参数，支持命令行参数覆盖
     2. 随机种子固定：确保实验可复现
     3. 数据加载：优先加载已处理的 .npz 文件，否则触发预处理流程
     4. 模型构建：根据配置实例化 STCAModel，支持可选的时序编码器和交叉注意力模块
@@ -18,11 +18,11 @@
     8. 快速评估：在测试集上输出损失和准确率
 
 使用方式：
-    # 使用默认配置训练
-    python -m train.train_static
+    # 使用默认参数训练
+    python -m modules.train_static
 
-    # 指定 JSON 配置文件
-    python -m train.train_static --config my_config.json
+    # 指定数据划分模式
+    python -m modules.train_static --split-mode outdomain
 
 输入：
     - CSV 数据目录（默认 "data for sharing_csv"）
@@ -45,10 +45,18 @@ import os
 import sys
 from pathlib import Path
 
+# 添加项目根目录到 Python 路径，以便导入 utils
+ROOT_DIR = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
+# 添加当前目录（modules）到路径，以便导入 trainer、stca_model 等
+CURRENT_DIR = Path(__file__).parent
+sys.path.insert(0, str(CURRENT_DIR))
+
 from utils.seed_utils import set_seed
 from trainer import Trainer
 from stca_model import STCAModel
-from static_preprocess import StaticPreprocessor
+from data_loading.main import StaticPreprocessor
 import matplotlib.pyplot as plt
 import argparse
 import logging
@@ -334,22 +342,52 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
         f"Combined training history plot saved to {figures_dir / history_filename}")
 
 
-def load_default_config():
-    """从 default_config.json 加载默认配置"""
-    import json
-    config_path = Path(__file__).parent.parent / "default_config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+from .constants import (
+    SPATIAL_EMBED_DIM, SPATIAL_NUM_HEADS, SPATIAL_NUM_LAYERS, SPATIAL_D_FF, SPATIAL_DROPOUT,
+    TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS, TEMPORAL_DROPOUT, TEMPORAL_BIDIRECTIONAL,
+    CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
+    CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, RANDOM_SEED,
+)
+
+# 数据预处理参数从 data_loading.constants 导入
+from data_loading.constants import (
+    DEFAULT_WINDOW_SIZE as WINDOW_SIZE,
+    DEFAULT_MAX_SATELLITES as MAX_SATELLITES,
+    INPUT_DIM,
+    NUM_CLASSES,
+)
 
 def main(args):
-    # Load config from default_config.json
-    config = load_default_config()
-    if args.config:
-        import json
-        with open(args.config, "r") as f:
-            user_config = json.load(f)
-        config.update(user_config)
+    # 从 constants 模块加载默认参数
+    config = {
+        "spatial_embed_dim": SPATIAL_EMBED_DIM,
+        "spatial_num_heads": SPATIAL_NUM_HEADS,
+        "spatial_num_layers": SPATIAL_NUM_LAYERS,
+        "spatial_d_ff": SPATIAL_D_FF,
+        "spatial_dropout": SPATIAL_DROPOUT,
+        "temporal_embed_dim": TEMPORAL_EMBED_DIM,
+        "temporal_num_layers": TEMPORAL_NUM_LAYERS,
+        "temporal_dropout": TEMPORAL_DROPOUT,
+        "temporal_bidirectional": TEMPORAL_BIDIRECTIONAL,
+        "cross_attn_embed_dim": CROSS_ATTN_EMBED_DIM,
+        "cross_attn_num_heads": CROSS_ATTN_NUM_HEADS,
+        "cross_attn_dropout": CROSS_ATTN_DROPOUT,
+        "classifier_hidden_dims": CLASSIFIER_HIDDEN_DIMS,
+        "classifier_dropout": CLASSIFIER_DROPOUT,
+        "batch_size": BATCH_SIZE,
+        "epochs": EPOCHS,
+        "learning_rate": LEARNING_RATE,
+        "random_seed": RANDOM_SEED,
+        "window_size": WINDOW_SIZE,
+        "max_satellites": MAX_SATELLITES,
+        "input_dim": INPUT_DIM,
+        "num_classes": NUM_CLASSES,
+    }
 
+    # 确定 split_mode
+    split_mode = args.split_mode if args.split_mode else "indomain"
+    
     # Set seed
     set_seed(config["random_seed"])
 

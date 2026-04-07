@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
 
-from constants import (
+from .constants import (
     DEFAULT_FEATURE_COLS,
     LABEL_COL,
     LABEL_MAP,

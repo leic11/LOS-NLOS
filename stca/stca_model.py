@@ -202,10 +202,27 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
-from spatial_encoder import SpatialEncoder
-from temporal_encoder import TemporalEncoder
-from cross_attention import CrossAttention
-from sparse_representation import SparseRepresentation
+from modules.spatial_encoder import SpatialEncoder
+from modules.temporal_encoder import TemporalEncoder
+from modules.cross_attention import CrossAttention
+from modules.sparse_representation import SparseRepresentation
+from modules.constants import (
+    SPATIAL_EMBED_DIM,
+    SPATIAL_NUM_HEADS,
+    SPATIAL_NUM_LAYERS,
+    SPATIAL_D_FF,
+    SPATIAL_DROPOUT,
+    TEMPORAL_EMBED_DIM,
+    TEMPORAL_NUM_LAYERS,
+    TEMPORAL_DROPOUT,
+    TEMPORAL_BIDIRECTIONAL,
+    CROSS_ATTN_EMBED_DIM,
+    CROSS_ATTN_NUM_HEADS,
+    CROSS_ATTN_DROPOUT,
+    SPARSE_EMBED_DIM,
+    CLASSIFIER_HIDDEN_DIMS,
+    CLASSIFIER_DROPOUT,
+)
 
 
 class STCAModel(nn.Module):
@@ -228,51 +245,50 @@ class STCAModel(nn.Module):
         input_dim: int,
         num_classes: int = 2,
         # Spatial encoder params (AAM Module)
-        spatial_embed_dim: int = 64,
-        spatial_num_heads: int = 1,
-        spatial_num_layers: int = 1,
+        spatial_embed_dim: int = None,
+        spatial_num_heads: int = None,
+        spatial_num_layers: int = None,
         spatial_d_ff: int = None,
         spatial_hidden_dims: list = None,
-        spatial_dropout: float = 0.1,
+        spatial_dropout: float = None,
         # Temporal encoder params (LSTM-TFE Module)
         # 始终启用时序编码器
-        temporal_embed_dim: int = 64,
-        temporal_num_layers: int = 1,
-        temporal_dropout: float = 0.1,
-        temporal_bidirectional: bool = False,
+        temporal_embed_dim: int = None,
+        temporal_num_layers: int = None,
+        temporal_dropout: float = None,
+        temporal_bidirectional: bool = None,
         # Cross-attention params
-        use_cross_attention: bool = False,
-        cross_attn_embed_dim: int = 64,
-        cross_attn_num_heads: int = 1,
-        cross_attn_dropout: float = 0.1,
+
+        cross_attn_embed_dim: int = None,
+        cross_attn_num_heads: int = None,
+        cross_attn_dropout: float = None,
         # Sparse representation params (SP(Z) Module) — 论文 III-F：仅 embed_dim，无额外参数
         # Classification params
-        classifier_hidden_dims: list = None,
-        classifier_dropout: float = 0.3,
+        classifier_hidden_dims: list = None,  # 默认 [64, 32]
+        classifier_dropout: float = None,
     ):
         """
         Args:
             input_dim: 输入特征维度
             num_classes: 类别数量 (2 for NLOS/LOS)
-            use_cross_attention: 是否使用交叉注意力模块
             其他参数映射到各个子模块
         """
         super(STCAModel, self).__init__()
-        
+
+        # 使用 constants.py 中的默认参数
         self.input_dim = input_dim
         self.num_classes = num_classes
-        self.use_cross_attention = use_cross_attention
 
         # Spatial Encoder (AAM Module)
         # Spatial Encoder (AAM Module)
         # Now using Attention Aggregation Module instead of MLP
         self.spatial_encoder = SpatialEncoder(
             input_dim=input_dim,
-            embed_dim=spatial_embed_dim,
-            num_heads=spatial_num_heads,
-            num_layers=spatial_num_layers,
-            d_ff=spatial_d_ff,
-            dropout_rate=spatial_dropout,
+            embed_dim=spatial_embed_dim if spatial_embed_dim is not None else SPATIAL_EMBED_DIM,
+            num_heads=spatial_num_heads if spatial_num_heads is not None else SPATIAL_NUM_HEADS,
+            num_layers=spatial_num_layers if spatial_num_layers is not None else SPATIAL_NUM_LAYERS,
+            d_ff=spatial_d_ff if spatial_d_ff is not None else SPATIAL_D_FF,
+            dropout_rate=spatial_dropout if spatial_dropout is not None else SPATIAL_DROPOUT,
         )
 
         # Temporal Encoder (LSTM-TFE Module)
@@ -280,11 +296,11 @@ class STCAModel(nn.Module):
         # Temporal encoder receives raw temporal features directly (without spatial encoder)
         # Input dimension should be the original feature dimension (input_dim)
         self.temporal_encoder = TemporalEncoder(
-            input_dim=input_dim,  # Raw feature dimension, not spatial_embed_dim
-            embed_dim=temporal_embed_dim,
-            num_layers=temporal_num_layers,
-            dropout_rate=temporal_dropout,
-            bidirectional=temporal_bidirectional,
+            input_dim=input_dim,
+            embed_dim=temporal_embed_dim if temporal_embed_dim is not None else TEMPORAL_EMBED_DIM,
+            num_layers=temporal_num_layers if temporal_num_layers is not None else TEMPORAL_NUM_LAYERS,
+            dropout_rate=temporal_dropout if temporal_dropout is not None else TEMPORAL_DROPOUT,
+            bidirectional=temporal_bidirectional if temporal_bidirectional is not None else TEMPORAL_BIDIRECTIONAL,
         )
         # 确定时间编码器输出维度
         if temporal_bidirectional:
@@ -292,41 +308,28 @@ class STCAModel(nn.Module):
         else:
             temporal_out_dim = temporal_embed_dim
 
-        # Cross-Attention
-        # 注意: Query 来自时间特征 (temporal_out_dim), Key/Value 来自空间特征 (spatial_embed_dim)
-        self.cross_attention = None
-        cross_attn_out_dim = None
+        # Cross-Attention (必需模块，论文 III-G)
+        self.cross_attention = CrossAttention(
+            embed_dim=cross_attn_embed_dim if cross_attn_embed_dim is not None else CROSS_ATTN_EMBED_DIM,
+            num_heads=cross_attn_num_heads if cross_attn_num_heads is not None else CROSS_ATTN_NUM_HEADS,
+            dropout_rate=cross_attn_dropout if cross_attn_dropout is not None else CROSS_ATTN_DROPOUT,
+        )
+        cross_attn_out_dim = self.cross_attention.embed_dim
 
-        if use_cross_attention:
-            # 确定 query 维度 (来自 temporal) 和 kv 维度 (来自 spatial)
-            query_input_dim = temporal_out_dim if temporal_out_dim else spatial_embed_dim
-            kv_input_dim = spatial_embed_dim
-
-            self.cross_attention = CrossAttention(
-                embed_dim=cross_attn_embed_dim,
-                num_heads=cross_attn_num_heads,
-                dropout_rate=cross_attn_dropout,
-                query_dim=query_input_dim,
-                kv_dim=kv_input_dim,
-            )
-            cross_attn_out_dim = cross_attn_embed_dim
-
-        # 稀疏表示直接作用在融合特征上，仅需 embed_dim（论文 III-F/III-G）
-        # 有交叉注意力时：输入为交叉注意力输出 dim；否则为时序编码器输出 dim
-        sparse_embed_dim = cross_attn_out_dim if use_cross_attention else temporal_out_dim
-        self.sparse_rep = SparseRepresentation(embed_dim=sparse_embed_dim)
-
+        # 稀疏表示层 (论文 III-F)
+        self.sparse_rep = SparseRepresentation(embed_dim=cross_attn_out_dim)
         # Classifier: 3层全连接层，符合论文IV.E节
         # 第1-2层: ReLU激活
         # 第3层(输出层): 1个神经元 + sigmoid激活
-        classifier_hidden_dims = classifier_hidden_dims or [64, 32]
+        classifier_hidden_dims = classifier_hidden_dims if classifier_hidden_dims is not None else CLASSIFIER_HIDDEN_DIMS
         layers = []
-        prev_dim = sparse_embed_dim
+        prev_dim = cross_attn_out_dim  # sparse_embed_dim
 
         for i, hidden_dim in enumerate(classifier_hidden_dims):
             layers.append(nn.Linear(prev_dim, hidden_dim))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(classifier_dropout))
+            dropout = classifier_dropout if classifier_dropout is not None else CLASSIFIER_DROPOUT
+            layers.append(nn.Dropout(dropout))
             prev_dim = hidden_dim
 
         # 输出层: 1个神经元 + sigmoid（论文要求）
@@ -390,41 +393,23 @@ class STCAModel(nn.Module):
         # temporal_emb: (batch, temporal_out_dim)
         temporal_emb = self.temporal_encoder(x_temporal)
 
-        # 交叉注意力 (Cross-Attention)
-        # 根据论文: Temporal features query Spatial features
-        # Q = H_temporal * W_q (时间特征作为Query)
-        # K = H_spatial * W_k (空间特征作为Key)
-        # V = H_spatial * W_v (空间特征作为Value)
-        # Attention(Q,K,V) = softmax(QK^T / √d_k) V
-        cross_attn_out = None
-        attn_weights = None
+        # 交叉注意力 (Cross-Attention, 论文 III-G)
+        # Query: 时间特征 (batch, 1, temporal_out_dim)
+        # Key/Value: 空间特征 (batch, num_sats, spatial_embed_dim)
+        query = temporal_emb.unsqueeze(1)  # (batch, 1, temporal_out_dim)
+        key = spatial_emb
+        value = spatial_emb
 
-        if self.use_cross_attention:
-            # 论文 III-G 公式(17)：单时间特征向量作 Query，空间卫星序列作 Key/Value
-            # Query: (batch, 1, query_dim)，不扩展为与空间序列同长
-            if temporal_emb is not None:
-                query = temporal_emb.unsqueeze(1)  # (batch, 1, temporal_out_dim)
-            else:
-                query = spatial_emb[:, :1, :]  # 退化为取空间首帧 (batch, 1, spatial_embed_dim)
-
-            key = spatial_emb   # (batch, window, spatial_embed_dim)
-            value = spatial_emb  # (batch, window, spatial_embed_dim)
-
-            if return_attention_weights:
-                cross_attn_out, attn_weights = self.cross_attention(
-                    query, key, value,
-                    return_attention_weights=True
-                )
-                # cross_attn_out 已是 (batch, 1, embed_dim)，稀疏层会 squeeze 为 (batch, embed_dim)
-            else:
-                cross_attn_out = self.cross_attention(query, key, value)
-
-        # 稀疏表示 (Sparse Representation)
-        if self.use_cross_attention:
-            sparse_input = cross_attn_out
+        if return_attention_weights:
+            cross_attn_out, attn_weights = self.cross_attention(
+                query, key, value,
+                return_attention_weights=True
+            )
         else:
-            # 使用时序特征的均值池化
-            sparse_input = temporal_emb
+            cross_attn_out = self.cross_attention(query, key, value)
+
+        # 稀疏表示 (Sparse Representation, 论文 III-F)
+        sparse_input = cross_attn_out
 
         # 应用稀疏表示层获取潜在嵌入
         sparse_emb = self.sparse_rep(sparse_input)
@@ -781,18 +766,18 @@ class STCAModel(nn.Module):
 if __name__ == "__main__":
     # 测试 STCAModel（__init__ 无 use_temporal 参数，时序编码器始终启用）
     model = STCAModel(
-        input_dim=9,
+        input_dim=4,  # 论文规定的 4 个特征：C/N0, Elevation, Azimuth, Pseudorange_residual
         use_cross_attention=True,
         temporal_bidirectional=True
     )
-    
+
     # 测试单历元输入
-    x_single = torch.randn(32, 9)  # batch=32, features=9
+    x_single = torch.randn(32, 4)  # batch=32, features=4
     out_single = model(x_single)
     print(f"Single Epoch Input: {x_single.shape} -> Output: {out_single.shape}")
-    
+
     # 测试窗口输入
-    x_window = torch.randn(32, 10, 9)  # batch=32, window=10, features=9
+    x_window = torch.randn(32, 10, 4)  # batch=32, window=10, features=4
     out_window = model(x_window)
     print(f"Window Input: {x_window.shape} -> Output: {out_window.shape}")
     

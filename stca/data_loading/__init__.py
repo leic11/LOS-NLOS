@@ -16,6 +16,9 @@ from .constants import (
     DEFAULT_MAX_SATELLITES,
     DEFAULT_TEST_SIZE,
     DEFAULT_VAL_SIZE,
+    DEFAULT_SPLIT_MODE,
+    INPUT_DIM,
+    NUM_CLASSES,
 )
 
 __all__ = [
@@ -25,4 +28,7 @@ __all__ = [
     "DEFAULT_MAX_SATELLITES",
     "DEFAULT_TEST_SIZE",
     "DEFAULT_VAL_SIZE",
+    "DEFAULT_SPLIT_MODE",
+    "INPUT_DIM",
+    "NUM_CLASSES",
 ]
