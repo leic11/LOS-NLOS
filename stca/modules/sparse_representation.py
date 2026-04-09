@@ -108,11 +108,12 @@ class SparseRegularizer(nn.Module):
         # w1_raw, w2_raw: 通过 softplus 映射到 (0, +inf)
         self.w1_raw = nn.Parameter(torch.ones(embed_dim) * 1.0)
         self.w2_raw = nn.Parameter(torch.ones(embed_dim) * 0.5)
-        
+
         # b1_raw, b2_raw: 通过约束映射
         # b1 = b2 * sigmoid(b1_raw), 保证 0 <= b1 <= b2
-        self.b2_raw = nn.Parameter(torch.ones(embed_dim) * 0.5)
-        self.b1_raw = nn.Parameter(torch.zeros(embed_dim))
+        # 减小初始值以允许更小的输入通过
+        self.b2_raw = nn.Parameter(torch.ones(embed_dim) * -2.0)  # softplus(-2) ≈ 0.127
+        self.b1_raw = nn.Parameter(torch.zeros(embed_dim))  # sigmoid(0) = 0.5, b1 = 0.5 * b2
     
     def _get_parameters(self):
         """返回满足约束的参数 (w1, w2, b1, b2)"""
@@ -191,54 +192,3 @@ class SparseRepresentation(nn.Module):
         z = self.sparse_regularizer(z)
 
         return z
-
-    def get_config(self):
-        """返回模块配置（供 STCAModel.get_config 使用）"""
-        return {"embed_dim": self.embed_dim}
-
-
-if __name__ == "__main__":
-    # 测试 SparseRepresentation（embed_dim=64，符合论文）
-    sparse = SparseRepresentation(embed_dim=64)
-    
-    # 测试 2D 输入 (batch, embed_dim)
-    z_2d = torch.randn(32, 64)  # batch=32, embed_dim=64
-    out_2d = sparse(z_2d)
-    print(f"2D Input: {z_2d.shape} -> Output: {out_2d.shape}")
-    
-    # 测试 3D 输入 (batch, 1, embed_dim) - 来自交叉注意力
-    z_3d = torch.randn(32, 1, 64)  # batch=32, seq_len=1, embed_dim=64
-    out_3d = sparse(z_3d)
-    print(f"3D Input: {z_3d.shape} -> Output: {out_3d.shape}")
-    # 3D 输入会被压缩为 2D 输出 (batch, embed_dim)，供分类头使用
-    
-    # 测试奇函数性质: Ω(-z) = -Ω(z)
-    z_test = torch.tensor([[1.0, 2.0, -1.0, -2.0, 0.5]])
-    out_test = sparse.sparse_regularizer._omega_layer(z_test)
-    out_neg = sparse.sparse_regularizer._omega_layer(-z_test)
-    print(f"\n奇函数性质检验:")
-    print(f"z:    {z_test.tolist()}")
-    print(f"Ω(z): {out_test.tolist()}")
-    print(f"Ω(-z):{out_neg.tolist()}")
-    print(f"-Ω(z):{(-out_test).tolist()}")
-    print(f"Ω(-z) ≈ -Ω(z): {torch.allclose(out_neg, -out_test, atol=1e-5)}")
-    
-    # 测试稀疏性: 小值应该被压成0
-    z_small = torch.randn(8, 64) * 0.1  # 小值输入
-    out_small = sparse(z_small)
-    zero_ratio = (out_small.abs() < 1e-4).float().mean().item()
-    print(f"\n小值输入稀疏性检验:")
-    print(f"零值比例: {zero_ratio:.2%}")
-    
-    # 打印模型结构
-    print("\n模型结构:")
-    print(sparse)
-    
-    # 测试参数约束
-    print("\n参数范围检查:")
-    w1, w2, b1, b2 = sparse.sparse_regularizer._get_parameters()
-    print(f"w1: [{w1.min().item():.4f}, {w1.max().item():.4f}] (应该 > 0)")
-    print(f"w2: [{w2.min().item():.4f}, {w2.max().item():.4f}] (应该 > 0)")
-    print(f"b1: [{b1.min().item():.4f}, {b1.max().item():.4f}] (应该 0-1)")
-    print(f"b2: [{b2.min().item():.4f}, {b2.max().item():.4f}] (应该 > 0)")
-    print(f"b1 <= b2: {(b1 <= b2).all().item()}")

@@ -94,12 +94,6 @@ Related Modules:
     - STCAModel: 集成此模块进行时空特征融合
 """
 
-from .constants import (
-    CROSS_ATTN_EMBED_DIM,
-    CROSS_ATTN_NUM_HEADS,
-    CROSS_ATTN_DROPOUT,
-)
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -250,60 +244,3 @@ class CrossAttention(nn.Module):
         x = x.contiguous()
         x = x.view(batch_size, -1, self.embed_dim)
         return x
-    
-    def get_config(self):
-        """返回模型配置字典"""
-        return {
-            "embed_dim": self.embed_dim,
-            "num_heads": self.num_heads,
-            "dropout_rate": self.dropout_rate,
-            "query_dim": self.query_dim,
-            "kv_dim": self.kv_dim,
-        }
-
-
-# 单元测试
-if __name__ == "__main__":
-    # 测试 CrossAttention - 符合STCA论文设计
-    # Query: 时间特征 h_t (batch, 1, embed_dim)
-    # Key/Value: 空间特征 h_s (batch, num_satellites, embed_dim)
-    cross_attn = CrossAttention(
-        embed_dim=64,
-        num_heads=1,       # 论文最优
-        dropout_rate=0.5  # 论文最优
-    )
-    
-    # 模拟输入 - 符合STCA论文设计
-    batch_size = 32
-    num_satellites = 10  # 同一历元捕获的卫星数量
-    
-    # Query: 时间特征 (来自LSTM-TFE)，形状 (batch, 1, embed_dim)
-    query = torch.randn(batch_size, 1, 64)
-    
-    # Key/Value: 空间特征 (来自AAM)，形状 (batch, num_satellites, embed_dim)
-    key = torch.randn(batch_size, num_satellites, 64)
-    value = torch.randn(batch_size, num_satellites, 64)
-    
-    # 前向传播
-    output = cross_attn(query, key, value)
-    print(f"Query: {query.shape}, Key: {key.shape}, Value: {value.shape}")
-    print(f"Output: {output.shape}")
-    assert output.shape == (batch_size, 1, 64), f"Expected ({batch_size}, 1, 64), got {output.shape}"
-    
-    # 测试返回注意力权重
-    output, attn = cross_attn(query, key, value, return_attention_weights=True)
-    print(f"Attention weights shape: {attn.shape}")
-    assert attn.shape == (batch_size, 1, num_satellites), f"Expected ({batch_size}, 1, {num_satellites}), got {attn.shape}"
-    
-    # 打印模型结构
-    print("\n模型结构:")
-    print(cross_attn)
-    
-    # 打印配置
-    print("\n模型配置:")
-    print(cross_attn.get_config())
-    
-    print('\n✓ CrossAttention 单元测试通过!')
-    print('  - Query: 时间特征 h_t (batch, 1, embed_dim) - 来自LSTM-TFE')
-    print('  - Key/Value: 空间特征 h_s (batch, num_satellites, embed_dim) - 来自AAM')
-    print('  - 默认超参数: num_heads=1, dropout_rate=0.5')

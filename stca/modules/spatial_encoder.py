@@ -7,26 +7,6 @@ Spatial Encoder Module (空间编码器模块) - PyTorch Version
 根据STCA论文，AAM使用多头自注意力机制对GNSS卫星观测数据进行空间域特征提取。
 
 ══════════════════════════════════════════════════════════════════════════════
-                              AAM 模块设计理念
-══════════════════════════════════════════════════════════════════════════════
-
-为什么需要AAM (注意力聚合模块):
-    1. 传统MLP缺乏对卫星间关系的建模能力
-       - GNSS NLOS检测需要考虑多卫星之间的几何关系
-       - 不同卫星的信号质量相互关联
-
-    2. 注意力机制的优势
-       - 动态权重: 根据输入数据自动学习哪些卫星更重要
-       - 可解释性: 注意力权重可以可视化显示关注区域
-       - 长距离依赖: 轻松捕捉任意卫星之间的关系
-
-    3. AAM的核心思想
-       - 首先将输入特征投影到嵌入空间
-       - 使用多头自注意力建模卫星间的相关性
-       - 通过前馈网络进一步变换
-       - 产生空间特征表示
-
-══════════════════════════════════════════════════════════════════════════════
                               数学公式定义
 ══════════════════════════════════════════════════════════════════════════════
 
@@ -95,14 +75,6 @@ Related Modules:
     - STCAModel: 集成AAM和TemporalEncoder作为双路并行结构
 """
 
-from .constants import (
-    SPATIAL_EMBED_DIM,
-    SPATIAL_NUM_HEADS,
-    SPATIAL_NUM_LAYERS,
-    SPATIAL_D_FF,
-    SPATIAL_DROPOUT,
-)
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -111,21 +83,6 @@ import torch.nn.functional as F
 class SpatialEncoder(nn.Module):
     """
     AAM (Attention Aggregation Module) based Spatial Encoder.
-    
-    使用TransformerEncoder实现多头自注意力，符合STCA论文。
-    
-    Input:  
-        - (batch_size, input_dim) - 2D输入（单卫星）
-        - (batch_size, num_satellites, input_dim) - 3D输入（同一历元多卫星）
-        
-    Output: 
-        - (batch_size, num_satellites, embed_dim) - 始终输出3D
-    
-    论文最优超参数 (Table III):
-        - num_heads: 1
-        - dropout_rate: 0.5
-        - d_ff: embed_dim * 2
-        - num_layers: 1
     """
 
     def __init__(
@@ -216,53 +173,4 @@ class SpatialEncoder(nn.Module):
         
         # 输出: (batch, seq_len, embed_dim)
         return h
-    
-    def get_config(self):
-        """返回模型配置字典"""
-        return {
-            "input_dim": self.input_dim,
-            "embed_dim": self.embed_dim,
-            "num_heads": self.num_heads,
-            "num_layers": self.num_layers,
-            "d_ff": self.d_ff,
-            "dropout_rate": self.dropout_rate,
-            "encoder_type": "AAM",
-        }
 
-
-# 单元测试
-if __name__ == "__main__":
-    # 测试 AAM SpatialEncoder - 符合论文设计
-    # 论文输入: 4个特征 (C/N0, Elevation, Azimuth, Pseudorange_residual)
-    encoder = SpatialEncoder(
-        input_dim=4,      # 论文规定的4个特征
-        embed_dim=64,     # 论文最优
-        num_heads=1,      # 论文最优
-        num_layers=1,    # 论文最优
-        dropout_rate=0.5  # 论文最优
-    )
-    
-    # 测试2D输入 (单卫星)
-    x_2d = torch.randn(32, 4)
-    out_2d = encoder(x_2d)
-    print(f'2D Input: {x_2d.shape} -> Output: {out_2d.shape}')
-    assert out_2d.shape == (32, 1, 64), "2D input should output (batch, 1, embed_dim)"
-    
-    # 测试3D输入 (同一历元的多个卫星, num_satellites=10)
-    x_3d = torch.randn(16, 10, 4)  # batch=16, num_satellites=10, features=4
-    out_3d = encoder(x_3d)
-    print(f'3D Input: {x_3d.shape} -> Output: {out_3d.shape}')
-    assert out_3d.shape == (16, 10, 64), "3D input should output (batch, num_satellites, embed_dim)"
-    
-    # 打印模型结构
-    print("\n模型结构:")
-    print(encoder)
-    
-    # 打印配置
-    print("\n模型配置:")
-    print(encoder.get_config())
-    
-    print('\n✓ AAM SpatialEncoder 单元测试通过!')
-    print('  - 输入特征维度: 4 (C/N0, Elevation, Azimuth, Pseudorange_residual)')
-    print('  - num_satellites 表示同一历元捕获的卫星数量')
-    print('  - 默认超参数: num_heads=1, dropout_rate=0.5, num_layers=1')

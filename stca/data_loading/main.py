@@ -71,27 +71,59 @@ class StaticPreprocessor:
         """委托给 DataFilter 过滤异常值"""
         return self.filter.filter_outliers(df)
 
-    def _get_split_masks(
+    def _get_split_indices(
         self,
         locations: np.ndarray,
+        y: np.ndarray,
         split_mode: str
     ) -> Dict[str, np.ndarray]:
-        """获取训练集/验证集/测试集的划分掩码"""
+        """获取训练集/验证集/测试集的划分索引"""
         if split_mode == "indomain":
-            # Indomain：每个地点内随机划分，无法直接用 mask 表示
-            # 返回索引数组
-            y = np.zeros(len(locations), dtype=np.int32)
-            X_dummy = np.arange(len(locations))
-            X_train, X_val, X_test, *_ = self.splitter.split_indomain(
-                X_dummy.reshape(-1, 1), y, locations, self.test_size
+            # Indomain：每个地点内随机划分
+            # 使用全 1 作为虚拟特征，因为 split_indomain 只需要索引划分
+            X_dummy = np.ones((len(locations), 1))
+
+            X_train, X_val, X_test, y_train, y_val, y_test = self.splitter.split_indomain(
+                X_dummy, y, locations, self.test_size
             )
+
+            # 需要从 locations 和 y 中获取实际索引
+            # 重新执行划分逻辑来获取索引
+            unique_locations = np.unique(locations)
+            train_indices = []
+            test_indices = []
+
+            for loc in unique_locations:
+                loc_mask = locations == loc
+                loc_indices = np.where(loc_mask)[0]
+                n_samples = len(loc_indices)
+                n_test = int(n_samples * self.test_size)
+
+                np.random.seed(self.splitter.random_seed)
+                shuffled = np.random.permutation(n_samples)
+
+                test_idx = loc_indices[shuffled[:n_test]]
+                train_val_idx = loc_indices[shuffled[n_test:]]
+
+                train_indices.extend(train_val_idx)
+                test_indices.extend(test_idx)
+
+            # 从训练集中划分验证集
+            train_indices = np.array(train_indices)
+            n_val = int(len(train_indices) * self.splitter.val_size)
+            np.random.seed(self.splitter.random_seed)
+            shuffled = np.random.permutation(len(train_indices))
+
+            val_idx = train_indices[shuffled[:n_val]]
+            train_idx = train_indices[shuffled[n_val:]]
+
             return {
-                "train": X_train.flatten(),
-                "val": X_val.flatten(),
-                "test": X_test.flatten()
+                "train": train_idx,
+                "val": val_idx,
+                "test": np.array(test_indices)
             }
         else:
-            # Outdomain：按地点划分，可以直接用 mask
+            # Outdomain：按地点划分，返回布尔掩码
             return {
                 "train": np.isin(locations, OUTDOMAIN_TRAIN_LOCATIONS),
                 "val": np.isin(locations, OUTDOMAIN_VAL_LOCATIONS),
@@ -115,7 +147,7 @@ class StaticPreprocessor:
         X_temporal, X_spatial, y, locations = self.windower.generate_stca_inputs(df)
 
         # 4. 划分数据集
-        indices = self._get_split_masks(locations, split_mode)
+        indices = self._get_split_indices(locations, y, split_mode)
 
         # 5. 标准化（仅使用训练集拟合）
         self.scaler = UnifiedScaler.from_data(

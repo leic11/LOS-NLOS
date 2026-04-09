@@ -37,6 +37,8 @@ PRE_FILTER_THRESHOLD = 100    # Pseudorange_residual 阈值
 PR_RATE_INVALID = 9999.0      # Pr_rate_consitency 无效值
 
 # Outdomain 划分地点配置
+# 注意：P7 地点 LOS 比例极低 (11%)，不适合单独作为验证集
+# 使用 P5 作为验证集 (LOS 约 65%)，P6+P7 作为测试集
 OUTDOMAIN_TRAIN_LOCATIONS = ["P2", "P3", "P4", "P8"]
-OUTDOMAIN_VAL_LOCATIONS = ["P7"]
-OUTDOMAIN_TEST_LOCATIONS = ["P5", "P6"]
+OUTDOMAIN_VAL_LOCATIONS = ["P5"]
+OUTDOMAIN_TEST_LOCATIONS = ["P6", "P7"]

@@ -19,11 +19,11 @@ Usage:
     from models.STCA.sparse_representation import SparseRepresentation
 """
 
-from .stca_model import STCAModel
-from .spatial_encoder import SpatialEncoder
-from .temporal_encoder import TemporalEncoder
-from .cross_attention import CrossAttention
-from .sparse_representation import SparseRepresentation
+from .modules.stca_model import STCAModel
+from .modules.spatial_encoder import SpatialEncoder
+from .modules.temporal_encoder import TemporalEncoder
+from .modules.cross_attention import CrossAttention
+from .modules.sparse_representation import SparseRepresentation
 
 __all__ = [
     'STCAModel',

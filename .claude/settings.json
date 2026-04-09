@@ -19,11 +19,28 @@
       "Bash(set PYTHONUTF8=1)",
       "Bash(PYTHONPATH=/c/Users/86195/Desktop/DevLab python -c \"from modules.train_static import *; print\\('train_static imports OK'\\)\")",
       "Bash(ls /c/Users/86195/Desktop/DevLab/stca/*.py)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(mv stca/modules/train_static.py stca/work/)",
+      "Bash(mv stca/modules/eval_static.py stca/work/)",
+      "Bash(git add:*)",
+      "Bash(ls *.py)",
+      "Bash(r)",
+      "Bash(n\\\\\")",
+      "Bash(powershell -Command \"\\(Get-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\stca\\\\modules\\\\stca_model.py' -Raw\\) -replace \\\\\"`r`n\\\\\", \\\\\"`n\\\\\")",
+      "Bash(Set-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\stca\\\\modules\\\\stca_model.py' -NoNewline\")",
+      "Bash(sed -i 's/X_train:/X_train_spatial: 训练空间特征，2 维数组 \\(samples, max_satellites, features\\)/' stca_model.py)",
+      "Bash(sed -i 's/X_val:/X_val_spatial:/' stca_model.py)",
+      "Bash(sed -i 's/x_temporal_train:/X_train_temporal: 训练时间特征，3 维数组 \\(samples, window_size, features\\)，/' stca_model.py)",
+      "Bash(sed -i 's/x_temporal_val:/X_val_temporal: 验证时间特征，3 维数组 \\(samples, window_size, features\\)，/' stca_model.py)",
+      "Bash(sed -i 's/\"X_test_spatial\" in data and \"X_test\" in data/\"X_test_spatial\" in data and \"X_test_temporal\" in data/' eval_static.py)",
+      "Bash(sed -i 's/X_test_3d = data\\\\[\"X_test\"\\\\]/X_test_3d = data[\"X_test_temporal\"]/' eval_static.py)",
+      "Bash(sed -i 's/Using single input mode/Using single input mode \\(fallback\\)/' eval_static.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading",
-      "\\tmp"
+      "\\tmp",
+      "C:\\Users\\86195\\Desktop\\DevLab\\stca",
+      "c:\\Users\\86195\\.claude\\plans"
     ]
   }
 }
