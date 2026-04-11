@@ -1,6 +1,0 @@
-numpy
-pandas
-torch
-openpyxl
-matplotlib
-tqdm
