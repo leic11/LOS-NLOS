@@ -25,7 +25,7 @@ DEFAULT_VAL_SIZE = 0.2
 DEFAULT_RANDOM_SEED = 42
 
 # STCA 模型输入参数
-DEFAULT_WINDOW_SIZE = 10      # 论文最优值 (Section IV-F)
+DEFAULT_WINDOW_SIZE = 16      # 论文最优值 (Section IV-F)
 DEFAULT_MAX_SATELLITES = 20   # 单历元最大卫星数（实际数据通常 ≤ 20）
 
 # 基础数据参数

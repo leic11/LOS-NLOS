@@ -4,12 +4,26 @@
 """
 import numpy as np
 from typing import Tuple
+import os, sys
 
-from .constants import (
-    OUTDOMAIN_TRAIN_LOCATIONS,
-    OUTDOMAIN_VAL_LOCATIONS,
-    OUTDOMAIN_TEST_LOCATIONS,
-)
+# 支持直接运行
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, str(_current_dir))
+
+if __name__ == "__main__" or "data_loading" not in __name__:
+    from constants import (
+        OUTDOMAIN_TRAIN_LOCATIONS,
+        OUTDOMAIN_VAL_LOCATIONS,
+        OUTDOMAIN_TEST_LOCATIONS,
+    )
+else:
+    from .constants import (
+        OUTDOMAIN_TRAIN_LOCATIONS,
+        OUTDOMAIN_VAL_LOCATIONS,
+        OUTDOMAIN_TEST_LOCATIONS,
+    )
+
 from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)

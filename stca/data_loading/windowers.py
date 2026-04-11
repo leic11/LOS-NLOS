@@ -5,14 +5,30 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
+import os, sys
 
-from .constants import (
-    DEFAULT_FEATURE_COLS,
-    LABEL_COL,
-    LABEL_MAP,
-    DEFAULT_MAX_SATELLITES,
-    DEFAULT_WINDOW_SIZE,
-)
+# 支持直接运行
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, str(_current_dir))
+
+if __name__ == "__main__" or "data_loading" not in __name__:
+    from constants import (
+        DEFAULT_FEATURE_COLS,
+        LABEL_COL,
+        LABEL_MAP,
+        DEFAULT_MAX_SATELLITES,
+        DEFAULT_WINDOW_SIZE,
+    )
+else:
+    from .constants import (
+        DEFAULT_FEATURE_COLS,
+        LABEL_COL,
+        LABEL_MAP,
+        DEFAULT_MAX_SATELLITES,
+        DEFAULT_WINDOW_SIZE,
+    )
+
 from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)

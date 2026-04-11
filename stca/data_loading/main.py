@@ -13,23 +13,43 @@ import pandas as pd
 # 将项目根目录（DevLab）添加到 sys.path，支持导入 utils 模块
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.dirname(os.path.dirname(_current_dir))
+_stca_dir = os.path.dirname(_current_dir)  # stca 目录
 if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+    sys.path.insert(0, str(_project_root))
+if _stca_dir not in sys.path:
+    sys.path.insert(0, str(_stca_dir))
 if _current_dir not in sys.path:
-    sys.path.insert(0, _current_dir)
+    sys.path.insert(0, str(_current_dir))
 
-from .constants import (
-    DEFAULT_FEATURE_COLS,
-    DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
-    DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
-    PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
-    OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
-)
-from .loaders import CSVLoader
-from .filters import DataFilter
-from .windowers import WindowGenerator
-from .splitters import DataSplitter
-from .normalizers import UnifiedScaler
+# 支持两种运行方式：模块导入 或 直接运行
+if __name__ == "__main__" or "data_loading" not in __name__:
+    # 直接运行时（python main.py 或 python data_loading/main.py）
+    from constants import (
+        DEFAULT_FEATURE_COLS,
+        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
+        DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
+        PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
+        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
+    )
+    from loaders import CSVLoader
+    from filters import DataFilter
+    from windowers import WindowGenerator
+    from splitters import DataSplitter
+    from normalizers import UnifiedScaler
+else:
+    # 作为模块导入时（python -m data_loading.main 或 from data_loading.main import ...）
+    from .constants import (
+        DEFAULT_FEATURE_COLS,
+        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
+        DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
+        PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
+        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
+    )
+    from .loaders import CSVLoader
+    from .filters import DataFilter
+    from .windowers import WindowGenerator
+    from .splitters import DataSplitter
+    from .normalizers import UnifiedScaler
 from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -143,8 +163,9 @@ class StaticPreprocessor:
         # 2. 过滤异常值
         df = self.filter.filter_outliers(df)
 
-        # 3. 生成 STCA 输入（时间通道 + 空间通道）
-        X_temporal, X_spatial, y, locations = self.windower.generate_stca_inputs(df)
+        # 3. 生成 STCA 输入（时间通道 + 空间通道）- 使用传入的 window_size
+        windower = WindowGenerator(self.feature_cols, window_size, max_satellites)
+        X_temporal, X_spatial, y, locations = windower.generate_stca_inputs(df)
 
         # 4. 划分数据集
         indices = self._get_split_indices(locations, y, split_mode)
@@ -168,9 +189,14 @@ class StaticPreprocessor:
         y_val = y[indices["val"]]
         y_test = y[indices["test"]]
 
+        # 计算实际样本数（outdomain 模式下 indices 是布尔掩码）
+        n_train = np.sum(indices["train"]) if indices["train"].dtype == bool else len(indices["train"])
+        n_val = np.sum(indices["val"]) if indices["val"].dtype == bool else len(indices["val"])
+        n_test = np.sum(indices["test"]) if indices["test"].dtype == bool else len(indices["test"])
+
         logger.info(
-            f"STCA 划分 - 训练集：{len(indices['train'])}, "
-            f"验证集：{len(indices['val'])}, 测试集：{len(indices['test'])}"
+            f"STCA 划分 - 训练集：{n_train}, "
+            f"验证集：{n_val}, 测试集：{n_test}"
         )
 
         # 7. 确定地点信息

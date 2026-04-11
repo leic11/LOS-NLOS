@@ -119,11 +119,24 @@ STCA模型是整个项目的核心模型，专门用于GNSS NLOS(非视距信号
     - classifier_dropout: 0.3
 """
 
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+from pathlib import Path
+
+# 添加项目根目录到路径，以便导入 utils 模块
+_current_file = Path(__file__).resolve()
+_module_dir = _current_file.parent      # stca/modules
+_stca_dir = _module_dir.parent          # stca
+_project_root = _stca_dir.parent        # DevLab (项目根目录)
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+from utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 from .spatial_encoder import SpatialEncoder
 from .temporal_encoder import TemporalEncoder
@@ -187,17 +200,25 @@ class STCAModel(nn.Module):
         # 分类器参数 - 默认值来自 constants.py
         classifier_hidden_dims: list = CLASSIFIER_HIDDEN_DIMS,
         classifier_dropout: float = CLASSIFIER_DROPOUT,
+
+        # 消融实验控制参数
+        use_cross_attention: bool = True,      # 是否使用交叉注意力模块
+        use_sparse_representation: bool = True,  # 是否使用稀疏表示模块
     ):
         """
         参数:
             input_dim: 输入特征维度
             num_classes: 类别数量 (2 for NLOS/LOS)
             其他参数默认值来自 constants.py，可直接覆盖
+            use_cross_attention: 是否使用交叉注意力模块 (消融实验用)
+            use_sparse_representation: 是否使用稀疏表示模块 (消融实验用)
         """
         super(STCAModel, self).__init__()
 
         self.input_dim = input_dim
         self.num_classes = num_classes
+        self.use_cross_attention = use_cross_attention
+        self.use_sparse_representation = use_sparse_representation
 
         # 空间编码器 (AAM Module)
         self.spatial_encoder = SpatialEncoder(
@@ -223,21 +244,31 @@ class STCAModel(nn.Module):
         else:
             temporal_out_dim = temporal_embed_dim
 
-        # 交叉注意力（必需模块，论文 III-G）
-        self.cross_attention = CrossAttention(
-            embed_dim=cross_attn_embed_dim,
-            num_heads=cross_attn_num_heads,
-            dropout_rate=cross_attn_dropout,
-        )
-        cross_attn_out_dim = self.cross_attention.embed_dim
+        # 交叉注意力（可选模块，论文 III-G）
+        if use_cross_attention:
+            self.cross_attention = CrossAttention(
+                embed_dim=cross_attn_embed_dim,
+                num_heads=cross_attn_num_heads,
+                dropout_rate=cross_attn_dropout,
+            )
+            cross_attn_out_dim = self.cross_attention.embed_dim
+        else:
+            self.cross_attention = None
+            # 无交叉注意力时，直接使用时间编码器输出
+            cross_attn_out_dim = temporal_out_dim
 
-        # 稀疏表示层 (论文 III-F)
-        self.sparse_rep = SparseRepresentation(embed_dim=cross_attn_out_dim)
+        # 稀疏表示层（可选模块，论文 III-F）
+        if use_sparse_representation:
+            self.sparse_rep = SparseRepresentation(embed_dim=cross_attn_out_dim)
+            classifier_input_dim = cross_attn_out_dim
+        else:
+            self.sparse_rep = None
+            classifier_input_dim = cross_attn_out_dim
         # Classifier: 3层全连接层，符合论文IV.E节
         # 第1-2层: ReLU激活
         # 第3层(输出层): 1个神经元 + sigmoid激活
         layers = []
-        prev_dim = cross_attn_out_dim
+        prev_dim = classifier_input_dim
 
         for hidden_dim in classifier_hidden_dims:
             layers.append(nn.Linear(prev_dim, hidden_dim))
@@ -271,38 +302,42 @@ class STCAModel(nn.Module):
         batch_size = x_spatial.size(0)
         
         # 空间编码 - 应用于 x_spatial
-        # x_spatial: (batch, window, input_dim)
-        # spatial_emb: (batch, window, spatial_embed_dim)
         spatial_emb = self.spatial_encoder(x_spatial)
-        # print("x_spatial:", x_spatial.shape)
-        # print("spatial_emb:",spatial_emb.shape)
 
         # 时间编码器 - 应用于 x_temporal
-        # temporal_emb: (batch, temporal_out_dim)
         temporal_emb = self.temporal_encoder(x_temporal)
-        # print("x_temporal:",x_temporal.shape)
-        # print("temporal_emb:",temporal_emb.shape)
 
-        # 交叉注意力（论文 III-G）
-        # Query: 时间特征 (batch, 1, temporal_out_dim)
-        # Key/Value: 空间特征 (batch, num_sats, spatial_embed_dim)
-        query = temporal_emb.unsqueeze(1)  # (batch, 1, temporal_out_dim)
-        key = spatial_emb
-        value = spatial_emb
+        # 交叉注意力（可选模块，论文 III-G）
+        if self.use_cross_attention:
+            # Query: 时间特征 (batch, 1, temporal_out_dim)
+            # Key/Value: 空间特征 (batch, num_sats, spatial_embed_dim)
+            query = temporal_emb.unsqueeze(1)  # (batch, 1, temporal_out_dim)
+            key = spatial_emb
+            value = spatial_emb
 
-        if return_attention_weights:
-            cross_attn_out, attn_weights = self.cross_attention(
-                query, key, value,
-                return_attention_weights=True
-            )
+            if return_attention_weights and self.cross_attention is not None:
+                cross_attn_out, attn_weights = self.cross_attention(
+                    query, key, value,
+                    return_attention_weights=True
+                )
+            else:
+                cross_attn_out = self.cross_attention(query, key, value) if self.cross_attention else None
+                attn_weights = None
+
+            # 稀疏表示（可选模块，论文 III-F）
+            if self.use_sparse_representation and self.sparse_rep is not None:
+                sparse_emb = self.sparse_rep(cross_attn_out.squeeze(1))
+            else:
+                sparse_emb = cross_attn_out.squeeze(1)
         else:
-            cross_attn_out = self.cross_attention(query, key, value)
-
-        # 稀疏表示（论文 III-F）
-        sparse_input = cross_attn_out
-
-        # 应用稀疏表示层获取潜在嵌入
-        sparse_emb = self.sparse_rep(sparse_input)
+            # 无交叉注意力：直接使用时间编码器输出
+            attn_weights = None
+            cross_attn_out = None
+            
+            if self.use_sparse_representation and self.sparse_rep is not None:
+                sparse_emb = self.sparse_rep(temporal_emb)
+            else:
+                sparse_emb = temporal_emb
 
         # 分类预测
         logits = self.classifier(sparse_emb)
@@ -318,9 +353,10 @@ class STCAModel(nn.Module):
             return logits
 
     def fit(self, X_train_spatial, y_train, X_val_spatial=None, y_val=None,
-            epochs=50, batch_size=256, lr=0.001, device='cpu',
+            epochs=50, batch_size=16, lr=0.001, device='cpu',
             verbose=True, progress_callback=None,
-            X_train_temporal=None, X_val_temporal=None):
+            X_train_temporal=None, X_val_temporal=None,
+            use_scheduler=True, scheduler_factor=0.5, scheduler_patience=5, scheduler_min_lr=1e-6):
         """
         训练模型方法。
 
@@ -398,6 +434,14 @@ class STCAModel(nn.Module):
         
         # 优化器
         optimizer = torch.optim.Adam(self.parameters(), lr=lr, betas=(0.9, 0.98))
+
+        # 学习率调度器：ReduceLROnPlateau（验证集 Loss 不下降时降低学习率）
+        scheduler = None
+        if use_scheduler and X_val_spatial is not None:
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='min', factor=scheduler_factor,
+                patience=scheduler_patience, min_lr=scheduler_min_lr
+            )
         
         # Loss function: 二元交叉熵损失（论文IV.E节）
         # 使用BCELoss因为模型输出层已经包含sigmoid
@@ -535,14 +579,20 @@ class STCAModel(nn.Module):
                 history['val_loss'].append(val_loss)
                 history['val_acc'].append(val_acc)
                 history['val_f1'].append(val_f1)
-                
+
+                # 学习率调度器 step
+                if scheduler is not None:
+                    scheduler.step(val_loss)
+
                 if verbose:
-                    print(f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}, Train F1: {train_f1:.2f}%, "
-                          f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.2f}%")
+                    logger.info(
+                        f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}, Train F1: {train_f1:.2f}%, "
+                        f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.2f}%"
+                    )
             else:
                 if verbose:
-                    print(f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}")
-            
+                    logger.info(f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}")
+
             # 调用进度回调函数（如提供）
             if progress_callback:
                 progress_callback(epoch + 1, epochs)
