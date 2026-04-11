@@ -35,7 +35,13 @@
       "Bash(sed -i 's/\"X_test_spatial\" in data and \"X_test\" in data/\"X_test_spatial\" in data and \"X_test_temporal\" in data/' eval_static.py)",
       "Bash(sed -i 's/X_test_3d = data\\\\[\"X_test\"\\\\]/X_test_3d = data[\"X_test_temporal\"]/' eval_static.py)",
       "Bash(sed -i 's/Using single input mode/Using single input mode \\(fallback\\)/' eval_static.py)",
-      "Bash(ls -la c:/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)"
+      "Bash(ls -la c:/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)",
+      "Bash(sed -i '563,565s/outputs_clamped = torch.clamp\\(outputs.squeeze\\(-1\\), min=1e-7, max=1-1e-7\\)/# BCEWithLogitsLoss 接收 logits，无需 clamp/' modules/stca_model.py)",
+      "Bash(sed -i '565s/loss = criterion\\(outputs_clamped, batch_y\\)/loss = criterion\\(outputs.squeeze\\(-1\\), batch_y\\)/' modules/stca_model.py)",
+      "Bash(sed -i '568s/preds = \\(outputs.squeeze\\(-1\\) >= 0.5\\).float\\(\\)/preds = \\(torch.sigmoid\\(outputs.squeeze\\(-1\\)\\) >= 0.5\\).float\\(\\)/' modules/stca_model.py)",
+      "Bash(tee train_log.txt)",
+      "Bash(cat)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading",
