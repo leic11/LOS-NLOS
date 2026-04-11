@@ -105,37 +105,25 @@ def load_data(config):
         logger.info(f"Loading preprocessed data from {npz_path}")
         data = StaticPreprocessor.load_processed(str(npz_path))
 
-        # 检查是否有变长空间输入（List 格式）
+        # 检查是否有新的 STCA 格式数据 (X_train_spatial + X_train_temporal)
         if data.get("X_train_spatial") is not None:
-            logger.info("Loading data with STCA format (variable-length spatial + temporal)")
+            # STCA 格式：空间输入 + 时间序列输入
+            logger.info("Loading data with STCA format (spatial + temporal)")
             X_train_temporal = data["X_train_temporal"]
             X_val_temporal = data["X_val_temporal"]
             X_test_temporal = data["X_test_temporal"]
-            X_train_spatial = data["X_train_spatial"]  # List of (N_i, 4)
+            X_train_spatial = data["X_train_spatial"]
             X_val_spatial = data["X_val_spatial"]
             X_test_spatial = data["X_test_spatial"]
-
-            # 打印空间数据统计信息（变长）
-            def spatial_stats(X_list, name):
-                if len(X_list) == 0:
-                    return 0, 0
-                lens = [len(x) for x in X_list]
-                return np.mean(lens), np.max(lens)
-
-            train_mean, train_max = spatial_stats(X_train_spatial, "Train")
-            val_mean, val_max = spatial_stats(X_val_spatial, "Val")
-            test_mean, test_max = spatial_stats(X_test_spatial, "Test")
+            max_satellites = data.get(
+                "max_satellites", X_train_spatial.shape[1])
 
             logger.info(
-                f"  Spatial: Train {len(X_train_spatial)} samples (mean={train_mean:.1f}, max={train_max} sats), "
-                f"Val {len(X_val_spatial)} samples (mean={val_mean:.1f}, max={val_max} sats), "
-                f"Test {len(X_test_spatial)} samples (mean={test_mean:.1f}, max={test_max} sats)"
-            )
+                f"  Spatial: Train {X_train_spatial.shape}, Val {X_val_spatial.shape}, Test {X_test_spatial.shape}")
             logger.info(
-                f"  Temporal: Train {X_train_temporal.shape}, Val {X_val_temporal.shape}, Test {X_test_temporal.shape}"
-            )
+                f"  Temporal: Train {X_train_temporal.shape}, Val {X_val_temporal.shape}, Test {X_test_temporal.shape}")
 
-            # 返回 (空间输入，时间输入)
+            # 返回 (空间输入, 时间输入)
             return (
                 (X_train_spatial, X_train_temporal),
                 (X_val_spatial, X_val_temporal),
@@ -307,7 +295,7 @@ from modules.constants import (
     TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS, TEMPORAL_DROPOUT, TEMPORAL_BIDIRECTIONAL,
     CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
     CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
-    BATCH_SIZE, EPOCHS, LEARNING_RATE, RANDOM_SEED, WEIGHT_DECAY,
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, RANDOM_SEED,
 )
 
 # 数据预处理参数从 data_loading.constants 导入
@@ -359,22 +347,14 @@ def main(args):
     # data_result is ((X_train_spatial, X_train_temporal), ...)
     (X_train_spatial, X_train_temporal), (X_val_spatial, X_val_temporal), (X_test_spatial,
                                                                            X_test_temporal), y_train, y_val, y_test = data_result
-    logger.info(f"Data loaded (STCA mode - variable-length spatial + temporal):")
+    logger.info(f"Data loaded (STCA mode - spatial + temporal):")
     logger.info(
-        f"  Spatial: Train {len(X_train_spatial)} samples, Val {len(X_val_spatial)}, Test {len(X_test_spatial)}")
+        f"  Spatial: Train {X_train_spatial.shape}, Val {X_val_spatial.shape}, Test {X_test_spatial.shape}")
     logger.info(
         f"  Temporal: Train {X_train_temporal.shape}, Val {X_val_temporal.shape}, Test {X_test_temporal.shape}")
 
     # Ensure input_dim matches data (spatial input is 2D: N, max_satellites, features)
-    # For variable-length, get feature dim from first sample
-    if isinstance(X_train_spatial, list):
-        feat_dim = X_train_spatial[0].shape[-1] if len(X_train_spatial) > 0 else 4
-    else:
-        feat_dim = X_train_spatial.shape[-1]
-    if config["input_dim"] != feat_dim:
-        logger.warning(
-            f"Config input_dim ({config['input_dim']}) != Data feature dim ({feat_dim}). Updating.")
-        config["input_dim"] = feat_dim
+    if config["input_dim"] != X_train_spatial.shape[-1]:
         logger.warning(
             f"Config input_dim ({config['input_dim']}) != Data feature dim ({X_train_spatial.shape[-1]}). Updating.")
         config["input_dim"] = X_train_spatial.shape[-1]
@@ -403,7 +383,7 @@ def main(args):
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
     # Train using model.fit()
-    logger.info(f"使用学习率：{config['learning_rate']}, L2 正则化：{WEIGHT_DECAY}")
+    logger.info(f"使用学习率：{config['learning_rate']}")
     history = model.fit(
         X_train_spatial, y_train,
         X_val_spatial=X_val_spatial, y_val=y_val,
@@ -414,7 +394,6 @@ def main(args):
         verbose=True,
         X_train_temporal=X_train_temporal,
         X_val_temporal=X_val_temporal,
-        weight_decay=WEIGHT_DECAY,
     )
 
     # Save final model (with split_mode in filename to avoid overwrite)

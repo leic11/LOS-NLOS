@@ -123,8 +123,7 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset, Dataset
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from pathlib import Path
 
@@ -159,48 +158,6 @@ from .constants import (
     CLASSIFIER_HIDDEN_DIMS,
     CLASSIFIER_DROPOUT,
 )
-
-
-class GNSSDualInputDataset(Dataset):
-    """
-    支持变长空间输入的 GNSS 数据集（类似 BaseModel）
-    """
-    def __init__(self, X_spatial_list, X_temporal, y):
-        """
-        Args:
-            X_spatial_list: List of (N_i, 4) - 变长空间输入
-            X_temporal: (N, window_size, 4) - 时间输入
-            y: (N,) - 标签
-        """
-        self.X_spatial_list = X_spatial_list
-        self.X_temporal = torch.FloatTensor(X_temporal)
-        self.y = torch.FloatTensor(y)
-
-    def __len__(self):
-        return len(self.X_temporal)
-
-    def __getitem__(self, idx):
-        return {
-            'spatial': torch.FloatTensor(self.X_spatial_list[idx]),
-            'temporal': self.X_temporal[idx],
-            'label': self.y[idx]
-        }
-
-
-def dual_input_collate_fn(batch):
-    """
-    变长空间输入的 collate 函数（类似 BaseModel 的 combined_collate_fn）
-    """
-    temporal = torch.stack([b['temporal'] for b in batch], dim=0)
-    labels = torch.stack([b['label'] for b in batch], dim=0)
-    spatial_list = [b['spatial'] for b in batch]
-    spatial_padded = pad_sequence(spatial_list, batch_first=True)
-
-    return {
-        'temporal': temporal,
-        'spatial': spatial_padded,
-        'labels': labels,
-    }
 
 
 class STCAModel(nn.Module):
@@ -321,6 +278,7 @@ class STCAModel(nn.Module):
 
         # 输出层: 1个神经元 + sigmoid（论文要求）
         layers.append(nn.Linear(prev_dim, 1))
+        layers.append(nn.Sigmoid())
 
         self.classifier = nn.Sequential(*layers)
 
@@ -398,8 +356,7 @@ class STCAModel(nn.Module):
             epochs=50, batch_size=16, lr=0.001, device='cpu',
             verbose=True, progress_callback=None,
             X_train_temporal=None, X_val_temporal=None,
-            use_scheduler=True, scheduler_factor=0.5, scheduler_patience=5, scheduler_min_lr=1e-6,
-            weight_decay=1e-4):
+            use_scheduler=True, scheduler_factor=0.5, scheduler_patience=5, scheduler_min_lr=1e-6):
         """
         训练模型方法。
 
@@ -458,35 +415,25 @@ class STCAModel(nn.Module):
                 X_val_temporal = None
 
         # 创建数据加载器（如需双输入）
-        # 确保标签转换为 float 类型（BCELoss 需要）
+        # 确保标签转换为float类型（BCELoss需要）
         y_train_arr = np.array(y_train, dtype=np.float32)
-
-        # 检测是否为变长空间输入（List 格式）
-        is_variable_length = isinstance(X_train_spatial, list)
-
-        if is_variable_length:
-            # 变长空间输入：使用 GNSSDualInputDataset + pad_sequence collate_fn
-            logger.info("Using variable-length spatial input with padding collate")
-            train_dataset = GNSSDualInputDataset(X_train_spatial, X_train_temporal, y_train_arr)
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                                     collate_fn=dual_input_collate_fn)
-        elif use_dual_input or X_train_temporal is not None:
-            # 固定长度空间输入：使用 TensorDataset
+        if use_dual_input or X_train_temporal is not None:
+            # 创建包含空间和时间数据的数据集
             train_spatial = torch.FloatTensor(X_train_spatial)
             train_temporal = torch.FloatTensor(X_train_temporal)
+            # BCELoss需要float类型标签
             train_labels = torch.FloatTensor(y_train_arr)
             train_dataset = TensorDataset(train_spatial, train_temporal, train_labels)
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         else:
             train_dataset = TensorDataset(
                 torch.FloatTensor(X_train_spatial),
-                torch.FloatTensor(y_train_arr)
+                torch.FloatTensor(y_train_arr)  # BCE需要float类型
             )
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-
-        # 优化器：添加 L2 正则化（权重衰减），防止过拟合
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr, betas=(0.9, 0.98), weight_decay=weight_decay)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        
+        # 优化器
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr, betas=(0.9, 0.98))
 
         # 学习率调度器：ReduceLROnPlateau（验证集 Loss 不下降时降低学习率）
         scheduler = None
@@ -495,17 +442,11 @@ class STCAModel(nn.Module):
                 optimizer, mode='min', factor=scheduler_factor,
                 patience=scheduler_patience, min_lr=scheduler_min_lr
             )
-
-        # Loss function: 二元交叉熵损失（论文 IV.E 节）
-        # 使用 BCEWithLogitsLoss 替代 BCELoss，数值更稳定
-        # 添加类别权重处理类别不平衡问题（类似 BaseModel 的做法）
-        count_label1 = np.sum(y_train_arr == 1)
-        count_label0 = np.sum(y_train_arr == 0)
-        pos_weight = count_label0 / max(1, count_label1)
-        logger.info(f"类别分布：NLOS={count_label0}, LOS={count_label1}, pos_weight={pos_weight:.4f}")
-
-        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight, device=device))
-
+        
+        # Loss function: 二元交叉熵损失（论文IV.E节）
+        # 使用BCELoss因为模型输出层已经包含sigmoid
+        criterion = nn.BCELoss()
+        
         history = {
             'train_loss': [],
             'train_acc': [],
@@ -515,8 +456,13 @@ class STCAModel(nn.Module):
             'val_f1': [],
         }
         
+        # 进度跟踪
+        import threading
+        progress_lock = threading.Lock()
+        progress_interval = max(1, epochs // 10)  # 每 10% 的 epoch 更新一次
 
         # 检查是否需要双输入
+        dual_input = X_train_temporal is not None
 
         for epoch in range(epochs):
             self.train()
@@ -527,12 +473,9 @@ class STCAModel(nn.Module):
             all_train_targets = []
 
             for batch_data in train_loader:
-                if use_dual_input or is_variable_length:
-                    # 双输入或变长输入：batch_data 是 dict (来自 dual_input_collate_fn)
-                    # {'spatial': padded_batch, 'temporal': batch, 'labels': batch}
-                    batch_x_spatial = batch_data['spatial']
-                    batch_x_temporal = batch_data['temporal']
-                    batch_y = batch_data['labels']
+                if dual_input:
+                    # 双输入：(spatial, temporal, labels)
+                    batch_x_spatial, batch_x_temporal, batch_y = batch_data
                     batch_x_spatial = batch_x_spatial.to(device)
                     batch_x_temporal = batch_x_temporal.to(device)
                     batch_y = batch_y.to(device)
@@ -549,17 +492,14 @@ class STCAModel(nn.Module):
                     outputs = self.forward(batch_x)
 
                 # 论文 III-F：稀疏化由 Ω(z) 激活实现，无需额外 L1 损失
-                # BCEWithLogitsLoss 接收 logits（未通过 sigmoid），内部处理数值稳定性
                 loss = criterion(outputs.squeeze(-1), batch_y)
 
                 loss.backward()
-                # 梯度裁剪：防止梯度爆炸，稳定训练（类似 BaseModel 的正则化效果）
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 epoch_loss += loss.item() * batch_y.size(0)
                 # sigmoid输出概率值，使用阈值0.5判断类别
-                preds = (torch.sigmoid(outputs.squeeze(-1)) >= 0.5).float()
+                preds = (outputs.squeeze(-1) >= 0.5).float()
                 epoch_total += batch_y.size(0)
                 epoch_correct += (preds == batch_y).sum().item()
 
@@ -583,31 +523,21 @@ class STCAModel(nn.Module):
                 self.eval()
 
                 # 创建验证数据集，基于输入类型
-                # 确保标签转换为 float 类型
+                # 确保标签转换为float类型
                 y_val_arr = np.array(y_val, dtype=np.float32)
-                
-                # 检测是否为变长空间输入（List 格式）
-                is_variable_length = isinstance(X_val_spatial, list)
-                
-                if is_variable_length:
-                    # 变长空间输入：使用 GNSSDualInputDataset + pad_sequence collate_fn
-                    val_dataset = GNSSDualInputDataset(X_val_spatial, X_val_temporal, y_val_arr)
-                    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                                           collate_fn=dual_input_collate_fn)
-                elif use_dual_input and X_val_temporal is not None:
+                if dual_input and X_val_temporal is not None:
                     val_spatial = torch.FloatTensor(X_val_spatial)
                     val_temporal = torch.FloatTensor(X_val_temporal)
                     val_labels = torch.FloatTensor(y_val_arr)
                     val_dataset = TensorDataset(val_spatial, val_temporal, val_labels)
-                    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
                 else:
                     val_dataset = TensorDataset(
                         torch.FloatTensor(X_val_spatial),
                         torch.FloatTensor(y_val_arr)
                     )
-                    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-                # 验证循环
+                val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
                 val_loss = 0
                 val_correct = 0
                 val_total = 0
@@ -616,11 +546,8 @@ class STCAModel(nn.Module):
 
                 with torch.no_grad():
                     for val_data in val_loader:
-                        if use_dual_input or is_variable_length:
-                            # 双输入或变长输入：batch_data 是 dict (来自 dual_input_collate_fn)
-                            batch_x_spatial = val_data['spatial']
-                            batch_x_temporal = val_data['temporal']
-                            batch_y = val_data['labels']
+                        if dual_input:
+                            batch_x_spatial, batch_x_temporal, batch_y = val_data
                             batch_x_spatial = batch_x_spatial.to(device)
                             batch_x_temporal = batch_x_temporal.to(device)
                             batch_y = batch_y.to(device)
@@ -633,13 +560,11 @@ class STCAModel(nn.Module):
 
                             outputs = self.forward(batch_x)
 
-                        # 使用 clamp 确保数值稳定性，避免 log(0)（与训练时一致）
-                        # BCEWithLogitsLoss 接收 logits，无需 clamp
                         loss = criterion(outputs.squeeze(-1), batch_y)
 
                         val_loss += loss.item() * batch_y.size(0)
                         # sigmoid输出概率值，使用阈值0.5判断类别
-                        preds = (torch.sigmoid(outputs.squeeze(-1)) >= 0.5).float()
+                        preds = (outputs.squeeze(-1) >= 0.5).float()
                         val_total += batch_y.size(0)
                         val_correct += (preds == batch_y).sum().item()
 
@@ -678,7 +603,7 @@ class STCAModel(nn.Module):
         """Evaluate model on test set.
 
         参数:
-            X_test: Test features (2D/3D tensor, or list for variable-length spatial)
+            X_test: Test features (2D or 3D)
             y_test: Test labels
             device: Device to use
             X_test_3d: Optional 3D test data for temporal models
@@ -688,26 +613,38 @@ class STCAModel(nn.Module):
 
         # 确定是否有双输入
         if X_test_3d is not None:
-            # 检测是否为变长空间输入（List 格式）
-            is_variable_length = isinstance(X_test, list)
-            
+            # 使用双输入 (空间 2D + 时间 3D)
+            X_test_spatial = X_test
+            X_test_temporal = X_test_3d
+
             y_test_arr = np.array(y_test, dtype=np.float32)
-            
-            if is_variable_length:
-                # 变长空间输入：使用 GNSSDualInputDataset + collate_fn
-                test_dataset = GNSSDualInputDataset(X_test, X_test_3d, y_test_arr)
-                test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False,
-                                        collate_fn=dual_input_collate_fn)
-            else:
-                # 固定长度空间输入：使用 TensorDataset
-                X_test_spatial = X_test
-                X_test_temporal = X_test_3d
+            test_dataset = TensorDataset(
+                torch.FloatTensor(X_test_spatial),
+                torch.FloatTensor(X_test_temporal),
+                torch.FloatTensor(y_test_arr)  # BCELoss 需要 FloatTensor（论文 IV.E）
+            )
+        else:
+            # 自动检测：如果 X_test 是 3D，使用它
+            X_test_np = np.array(X_test) if not isinstance(X_test, np.ndarray) else X_test
+            y_test_arr = np.array(y_test, dtype=np.float32)
+            if X_test_np.ndim == 3:
+                X_test_spatial = X_test_np[:, -1, :]
+                X_test_temporal = X_test_np
+
                 test_dataset = TensorDataset(
                     torch.FloatTensor(X_test_spatial),
                     torch.FloatTensor(X_test_temporal),
+                    torch.FloatTensor(y_test_arr)  # BCELoss 需要 FloatTensor
+                )
+            else:
+                # 单输入
+                test_dataset = TensorDataset(
+                    torch.FloatTensor(X_test),
                     torch.FloatTensor(y_test_arr)
                 )
-                test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False)
+
+        test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False)
+
         all_preds = []
         all_probs = []
 
@@ -715,15 +652,8 @@ class STCAModel(nn.Module):
 
         with torch.no_grad():
             for batch_data in test_loader:
-                if isinstance(batch_data, dict):
-                    # 变长输入：batch_data 是 dict (来自 dual_input_collate_fn)
-                    batch_x_spatial = batch_data['spatial']
-                    batch_x_temporal = batch_data['temporal']
-                    batch_x_spatial = batch_x_spatial.to(device)
-                    batch_x_temporal = batch_x_temporal.to(device)
-                    outputs = self.forward(x_spatial=batch_x_spatial, x_temporal=batch_x_temporal)
-                elif len(batch_data) == 3:
-                    # 双输入（固定长度）
+                if len(batch_data) == 3:
+                    # 双输入
                     batch_x_spatial, batch_x_temporal, _ = batch_data
                     batch_x_spatial = batch_x_spatial.to(device)
                     batch_x_temporal = batch_x_temporal.to(device)
@@ -733,9 +663,10 @@ class STCAModel(nn.Module):
                     batch_x, _ = batch_data
                     batch_x = batch_x.to(device)
                     outputs = self.forward(batch_x)
+
                 # sigmoid输出概率值，形状为(batch, 1)
                 # 阈值0.5判断类别
-                probs = torch.sigmoid(outputs.squeeze(-1))  # (batch, 1) -> (batch,)
+                probs = outputs.squeeze(-1)  # (batch, 1) -> (batch,)
                 preds = (probs >= 0.5).long()  # >=0.5为LOS(1)，<0.5为NLOS(0)
 
                 all_preds.extend(preds.cpu().numpy())

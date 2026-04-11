@@ -135,16 +135,16 @@ class WindowGenerator:
         self,
         df: pd.DataFrame,
         window_end_times: np.ndarray,
-    ) -> List[np.ndarray]:
+    ) -> np.ndarray:
         """
-        生成空间通道输入（同一时刻所有卫星，变长）
+        生成空间通道输入（同一时刻所有卫星）
 
         Args:
             df: 预处理后的 DataFrame
             window_end_times: 窗口结束时间数组
 
         Returns:
-            X_spatial_list: List of (N_i, 4) 数组，每个样本的卫星数可能不同
+            X_spatial: (N, max_satellites, 4)
         """
         # 按 GPS_Time 分组
         time_groups = df.groupby("GPS_Time(s)")
@@ -160,19 +160,31 @@ class WindowGenerator:
         for end_time in window_end_times:
             if end_time in time_to_sat_features:
                 sat_features = np.array(time_to_sat_features[end_time], dtype=np.float32)
-                # 保留所有卫星，不截断（变长）
-                X_spatial_list.append(sat_features)
-            else:
-                # 如果时间点不存在，返回空数组
-                X_spatial_list.append(np.empty((0, len(self.feature_cols)), dtype=np.float32))
+                n_sat = len(sat_features)
 
-        logger.info(f"Spatial input: {len(X_spatial_list)} samples, variable satellites per sample")
-        return X_spatial_list
+                if n_sat >= self.max_satellites:
+                    sat_features = sat_features[: self.max_satellites]
+                else:
+                    padding = np.zeros(
+                        (self.max_satellites - n_sat, sat_features.shape[1]),
+                        dtype=np.float32,
+                    )
+                    sat_features = np.vstack([sat_features, padding])
+            else:
+                sat_features = np.zeros(
+                    (self.max_satellites, len(self.feature_cols)), dtype=np.float32
+                )
+
+            X_spatial_list.append(sat_features)
+
+        X_spatial = np.array(X_spatial_list, dtype=np.float32)
+        logger.info(f"Spatial input shape: {X_spatial.shape}")
+        return X_spatial
 
     def generate_stca_inputs(
         self,
         df: pd.DataFrame,
-    ) -> Tuple[np.ndarray, List[np.ndarray], np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         生成 STCA 双通道输入
 
@@ -180,19 +192,15 @@ class WindowGenerator:
             df: 预处理后的 DataFrame
 
         Returns:
-            X_temporal: (N, window_size, 4)
-            X_spatial_list: List of (N_i, 4) - 变长空间输入
-            y: (N,)
-            locations: (N,)
-            window_end_times: (N,)
+            X_temporal, X_spatial, y, locations
         """
         X_temporal, y, locations, window_end_times = self.generate_temporal_input(df)
-        X_spatial_list = self.generate_spatial_input(df, window_end_times)
+        X_spatial = self.generate_spatial_input(df, window_end_times)
 
         # 验证对齐
-        assert len(X_temporal) == len(X_spatial_list) == len(y), (
+        assert len(X_temporal) == len(X_spatial) == len(y), (
             f"数据对齐错误：temporal={len(X_temporal)}, "
-            f"spatial={len(X_spatial_list)}, labels={len(y)}"
+            f"spatial={len(X_spatial)}, labels={len(y)}"
         )
 
-        return X_temporal, X_spatial_list, y, locations, window_end_times
+        return X_temporal, X_spatial, y, locations
