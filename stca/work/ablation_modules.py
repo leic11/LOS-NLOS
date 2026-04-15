@@ -1,6 +1,6 @@
 # ablation_modules.py
 """
-消融实验 2：核心模块验证实验
+消融实验 2：核心模块验证实验（9 特征）
 ============================
 
 用途：
@@ -11,18 +11,13 @@
     在固定其余实验条件的前提下，依次引入两个核心模块：
     1. Baseline: 无交叉注意力、无稀疏正则化
     2. +CrossAttn: 有交叉注意力、无稀疏正则化
-    3. +Sparse: 无交叉注意力、有稀疏正则化
+    3. +Both: 有交叉注意力、有稀疏正则化
 
-    对内域 (indomain) 和跨域 (outdomain) 数据分别进行实验
+    使用 9 特征输入（4 原始 +5 衍生）
+    数据划分模式使用 constants.py 中的 DEFAULT_SPLIT_MODE 设置
 
 输出：
-    - 6 张混淆矩阵：
-      - indomain_baseline.png
-      - indomain_crossattn.png
-      - indomain_sparse.png
-      - outdomain_baseline.png
-      - outdomain_crossattn.png
-      - outdomain_sparse.png
+    - 混淆矩阵和性能指标
 
 使用方式：
     python -m work.ablation_modules
@@ -54,7 +49,7 @@ from utils.logger_config import setup_logger
 from utils.seed_utils import set_seed
 from modules.stca_model import STCAModel
 from data_loading.main import StaticPreprocessor
-from data_loading.constants import DEFAULT_MAX_SATELLITES, DEFAULT_WINDOW_SIZE
+from data_loading.constants import DEFAULT_MAX_SATELLITES, DEFAULT_WINDOW_SIZE, DEFAULT_SPLIT_MODE
 
 logger = setup_logger(__name__)
 
@@ -62,19 +57,17 @@ logger = setup_logger(__name__)
 # 实验配置
 # ============================================================================
 
-# 模型配置（固定超参数）
+# 从 constants.py 导入统一超参数
+from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED
+
+# 模型配置（固定超参数，使用 modules/constants.py 默认值）
 CONFIG = {
-    "random_seed": 42,
-    "epochs": 50,
-    "batch_size": 16,
-    "learning_rate": 0.001,
+    "random_seed": RANDOM_SEED,
+    "epochs": EPOCHS,
+    "batch_size": BATCH_SIZE,
+    "learning_rate": LEARNING_RATE,
     "max_satellites": DEFAULT_MAX_SATELLITES,
     "window_size": DEFAULT_WINDOW_SIZE,
-    # 模型参数
-    "spatial_embed_dim": 64,
-    "temporal_embed_dim": 64,
-    "cross_attn_embed_dim": 64,
-    "classifier_hidden_dims": [64, 32],
 }
 
 # 消融实验配置：3 种模块组合
@@ -97,8 +90,8 @@ MODULE_CONFIGS = {
     },
 }
 
-# 数据划分模式
-SPLIT_MODES = ["indomain", "outdomain"]
+# 数据划分模式（使用 constants.py 默认值）
+SPLIT_MODES = [DEFAULT_SPLIT_MODE]
 
 # 输出目录
 OUTPUT_DIR = ROOT_DIR / "outputs" / "stca" / "ablation" / "modules"
@@ -150,17 +143,35 @@ def train_model(split_mode, module_key, module_config):
 
     logger.info(f"Data: Train={len(y_train)}, Val={len(y_val)}, Test={len(y_test)}")
 
-    # 构建模型（带模块控制参数）
+    # 导入默认配置
+    from modules.constants import (
+        SPATIAL_EMBED_DIM, SPATIAL_NUM_HEADS, SPATIAL_NUM_LAYERS, SPATIAL_DROPOUT,
+        TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS, TEMPORAL_DROPOUT,
+        CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
+        CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
+    )
+
+    # 构建模型（带模块控制参数，使用 9 特征输入）
     model = STCAModel(
-        input_dim=4,
+        input_dim=9,  # 9 特征
         num_classes=2,
-        spatial_embed_dim=CONFIG["spatial_embed_dim"],
-        temporal_embed_dim=CONFIG["temporal_embed_dim"],
-        cross_attn_embed_dim=CONFIG["cross_attn_embed_dim"],
-        classifier_hidden_dims=CONFIG["classifier_hidden_dims"],
+        spatial_embed_dim=SPATIAL_EMBED_DIM,
+        spatial_num_heads=SPATIAL_NUM_HEADS,
+        spatial_num_layers=SPATIAL_NUM_LAYERS,
+        spatial_dropout=SPATIAL_DROPOUT,
+        temporal_embed_dim=TEMPORAL_EMBED_DIM,
+        temporal_num_layers=TEMPORAL_NUM_LAYERS,
+        temporal_dropout=TEMPORAL_DROPOUT,
+        cross_attn_embed_dim=CROSS_ATTN_EMBED_DIM,
+        cross_attn_num_heads=CROSS_ATTN_NUM_HEADS,
+        cross_attn_dropout=CROSS_ATTN_DROPOUT,
+        classifier_hidden_dims=CLASSIFIER_HIDDEN_DIMS,
+        classifier_dropout=CLASSIFIER_DROPOUT,
         use_cross_attention=module_config["use_cross_attention"],
         use_sparse_representation=module_config["use_sparse_representation"],
     )
+
+    logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")

@@ -1,6 +1,6 @@
 # ablation_window_size.py
 """
-消融实验 1：时间窗口长度实验
+消融实验 1：时间窗口长度实验（9 特征）
 ============================
 
 用途：
@@ -8,7 +8,8 @@
 
 实验设置：
     - 使用跨域数据（outdomain 模式）
-    - 窗口长度从 6 到 20，步长为 2（即 6, 8, 10, 12, 14, 16, 18, 20）
+    - 使用 9 特征输入（4 原始 +5 衍生）
+    - 窗口长度从 6 到 32，步长为 2（即 6, 8, 10, ..., 32）
     - 固定其他超参数，仅改变窗口长度
 
 输出：
@@ -51,22 +52,21 @@ logger = setup_logger(__name__)
 # 实验配置
 # ============================================================================
 
-# 窗口长度范围：6 到 20，步长为 2
-WINDOW_SIZES = list(range(6, 21, 2))
+# 窗口长度范围：6 到 32，步长为 2
+WINDOW_SIZES = list(range(6, 33, 2))  # 6, 8, 10, ..., 32
+
+# 从 constants.py 导入统一超参数
+from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED
 
 # 固定超参数
 CONFIG = {
     "split_mode": "outdomain",  # 跨域数据
-    "random_seed": 42,
-    "epochs": 50,
-    "batch_size": 16,
-    "learning_rate": 0.001,
+    "random_seed": RANDOM_SEED,
+    "epochs": EPOCHS,
+    "batch_size": BATCH_SIZE,
+    "learning_rate": LEARNING_RATE,
     "max_satellites": DEFAULT_MAX_SATELLITES,
-    # 模型参数（使用默认值）
-    "spatial_embed_dim": 64,
-    "temporal_embed_dim": 64,
-    "cross_attn_embed_dim": 64,
-    "classifier_hidden_dims": [64, 32],
+    # 模型参数（使用 modules/constants.py 默认值）
 }
 
 # 输出目录
@@ -119,15 +119,33 @@ def train_and_evaluate(window_size):
 
     logger.info(f"Data loaded: Train={len(y_train)}, Val={len(y_val)}, Test={len(y_test)}")
 
-    # 构建模型
-    model = STCAModel(
-        input_dim=4,
-        num_classes=2,
-        spatial_embed_dim=CONFIG["spatial_embed_dim"],
-        temporal_embed_dim=CONFIG["temporal_embed_dim"],
-        cross_attn_embed_dim=CONFIG["cross_attn_embed_dim"],
-        classifier_hidden_dims=CONFIG["classifier_hidden_dims"],
+    # 导入默认配置
+    from modules.constants import (
+        SPATIAL_EMBED_DIM, SPATIAL_NUM_HEADS, SPATIAL_NUM_LAYERS, SPATIAL_DROPOUT,
+        TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS, TEMPORAL_DROPOUT,
+        CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
+        CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
     )
+
+    # 构建模型（使用 9 特征输入）
+    model = STCAModel(
+        input_dim=9,  # 9 特征
+        num_classes=2,
+        spatial_embed_dim=SPATIAL_EMBED_DIM,
+        spatial_num_heads=SPATIAL_NUM_HEADS,
+        spatial_num_layers=SPATIAL_NUM_LAYERS,
+        spatial_dropout=SPATIAL_DROPOUT,
+        temporal_embed_dim=TEMPORAL_EMBED_DIM,
+        temporal_num_layers=TEMPORAL_NUM_LAYERS,
+        temporal_dropout=TEMPORAL_DROPOUT,
+        cross_attn_embed_dim=CROSS_ATTN_EMBED_DIM,
+        cross_attn_num_heads=CROSS_ATTN_NUM_HEADS,
+        cross_attn_dropout=CROSS_ATTN_DROPOUT,
+        classifier_hidden_dims=CLASSIFIER_HIDDEN_DIMS,
+        classifier_dropout=CLASSIFIER_DROPOUT,
+    )
+
+    logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")

@@ -67,11 +67,23 @@ class DataFilter:
 
         # 过滤 Pr_rate_consitency
         df = df[df["Pr_rate_consitency"] != self.pr_rate_invalid].copy()
-        n_after_pr = len(df)
+        n_after_pr_rate = len(df)
 
         logger.info(
             f"Filtered Pr_rate_consitency (value == {self.pr_rate_invalid}): "
-            f"{n_after_dropna} -> {n_after_pr} (removed {n_after_dropna - n_after_pr})"
+            f"{n_after_dropna} -> {n_after_pr_rate} (removed {n_after_dropna - n_after_pr_rate})"
+        )
+
+        # 过滤 Pseudorange_residual 异常值（保留符号，只过滤极端值）
+        # 注意：PR 正负值有不同物理意义
+        # - PR > 0: 测量距离 > 几何距离（NLOS 特征）
+        # - PR < 0: 测量距离 < 几何距离（LOS 特征）
+        df = df[abs(df["Pseudorange_residual"]) < self.pre_threshold].copy()
+        n_after_pr = len(df)
+
+        logger.info(
+            f"Filtered |Pseudorange_residual| >= {self.pre_threshold}m: "
+            f"{n_after_pr_rate} -> {n_after_pr} (removed {n_after_pr_rate - n_after_pr})"
         )
 
         logger.info(

@@ -4,11 +4,31 @@ STCA 数据预处理常量配置
 """
 
 # 论文规定的 4 个关键特征 (Section IV-A)
+# 注：当前实验使用 9 特征（扩展特征）
 DEFAULT_FEATURE_COLS = [
     "C/N0",                    # 载噪比 (dB-Hz)
     "Elevation",               # 高度角 (度)
     "Azimuth",                 # 方位角 (度)
     "Pseudorange_residual",    # 伪距残差 (m)
+    "Delta_CNR",               # CNR 变化率（一阶差分）
+    "CNR_std",                 # CNR 标准差
+    "PrRes_std",               # 伪距残差标准差
+    "Delta_Elevation",         # 高度角变化率
+    "Delta_Azimuth",           # 方位角变化率
+]
+
+# 扩展的 9 个特征（4 个原始 + 5 个衍生）
+# 衍生特征与 basemodel 保持一致的命名
+EXTENDED_FEATURE_COLS = [
+    "C/N0",                    # 载噪比 (dB-Hz)
+    "Elevation",               # 高度角 (度)
+    "Azimuth",                 # 方位角 (度)
+    "Pseudorange_residual",    # 伪距残差 (m)
+    "Delta_CNR",               # CNR 变化率（一阶差分）
+    "CNR_std",                 # CNR 标准差
+    "PrRes_std",               # 伪距残差标准差
+    "Delta_Elevation",         # 高度角变化率
+    "Delta_Azimuth",           # 方位角变化率
 ]
 
 # 标签列名和映射
@@ -19,17 +39,17 @@ LABEL_MAP = {-1: 0, 1: 1}  # NLOS→0, LOS→1
 DEFAULT_LOCATION_PREFIXES = ["P2", "P3", "P4", "P5", "P6", "P7", "P8"]
 
 # 数据划分默认值
-DEFAULT_SPLIT_MODE = "outdomain"  # 默认划分模式：indomain 或 outdomain
+DEFAULT_SPLIT_MODE = "indomain"  # 默认划分模式：indomain 或 outdomain
 DEFAULT_TEST_SIZE = 0.3
 DEFAULT_VAL_SIZE = 0.2
 DEFAULT_RANDOM_SEED = 42
 
 # STCA 模型输入参数
-DEFAULT_WINDOW_SIZE = 16      # 论文最优值 (Section IV-F)
+DEFAULT_WINDOW_SIZE = 8      # 论文最优值 (Section IV-F)
 DEFAULT_MAX_SATELLITES = 20   # 单历元最大卫星数（实际数据通常 ≤ 20）
 
 # 基础数据参数
-INPUT_DIM = 4                 # 输入特征维度 (C/N0, Elevation, Azimuth, Pseudorange_residual)
+INPUT_DIM = 9                 # 输入特征维度 (4 原始 +5 衍生)
 NUM_CLASSES = 2               # 类别数量 (二分类输出，1 个神经元 + sigmoid)
 
 # 异常值过滤阈值
@@ -38,7 +58,7 @@ PR_RATE_INVALID = 9999.0      # Pr_rate_consitency 无效值
 
 # Outdomain 划分地点配置
 # 注意：P7 地点 LOS 比例极低 (11%)，不适合单独作为验证集
-# 使用 P5 作为验证集 (LOS 约 65%)，P6+P7 作为测试集
+# 使用 P5 作为验证集 (LOS 约 54%)，P6+P7 作为测试集
 OUTDOMAIN_TRAIN_LOCATIONS = ["P2", "P3", "P4", "P8"]
 OUTDOMAIN_VAL_LOCATIONS = ["P5"]
 OUTDOMAIN_TEST_LOCATIONS = ["P6", "P7"]

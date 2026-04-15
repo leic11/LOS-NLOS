@@ -296,9 +296,22 @@ def evaluate_model(model, test_loader, device, output_dir, split_mode="indomain"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Plot 1: Confusion Matrix
+    # 计算百分比（按行归一化）
+    cm_percent = cm.astype('float') / cm.sum(axis=1, keepdims=True) * 100
+
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+
+    # 创建自定义注释：数值 + 百分比
+    annot_labels = np.empty(cm.shape, dtype=object)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            annot_labels[i, j] = f'{cm[i, j]:d}\n{cm_percent[i, j]:.1f}%'
+
+    # 绘制热力图（使用归一化的混淆矩阵用于颜色条）
+    sns.heatmap(cm_percent, annot=annot_labels, fmt='', cmap='Blues',
+                cbar_kws={'format': '%.0f%%'},
                 xticklabels=['NLOS', 'LOS'], yticklabels=['NLOS', 'LOS'])
+
     plt.title('Confusion Matrix')
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')

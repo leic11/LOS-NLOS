@@ -35,13 +35,16 @@
       "Bash(sed -i 's/\"X_test_spatial\" in data and \"X_test\" in data/\"X_test_spatial\" in data and \"X_test_temporal\" in data/' eval_static.py)",
       "Bash(sed -i 's/X_test_3d = data\\\\[\"X_test\"\\\\]/X_test_3d = data[\"X_test_temporal\"]/' eval_static.py)",
       "Bash(sed -i 's/Using single input mode/Using single input mode \\(fallback\\)/' eval_static.py)",
-      "Bash(ls -la c:/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)"
+      "Bash(ls -la c:/Users/86195/Desktop/DevLab/stca/static_processed_*.npz)",
+      "Bash(D:/desktop/app/install/Python313/python.exe data_loading/main.py --help)",
+      "Bash(Get-Content \"C:\\\\Users\\\\86195\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-86195-Desktop-DevLab\\\\d5c16174-0705-4ac6-bc24-1e709104866a\\\\tasks\\\\b1welqppg.output\" -Tail 50)"
     ],
     "additionalDirectories": [
       "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading",
       "\\tmp",
       "C:\\Users\\86195\\Desktop\\DevLab\\stca",
-      "c:\\Users\\86195\\.claude\\plans"
+      "c:\\Users\\86195\\.claude\\plans",
+      "c:\\Users\\86195\\Desktop\\DevLab\\outputs\\ablation_feature"
     ]
   }
 }

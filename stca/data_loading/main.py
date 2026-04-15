@@ -23,7 +23,6 @@ if _current_dir not in sys.path:
 
 # 支持两种运行方式：模块导入 或 直接运行
 if __name__ == "__main__" or "data_loading" not in __name__:
-    # 直接运行时（python main.py 或 python data_loading/main.py）
     from constants import (
         DEFAULT_FEATURE_COLS,
         DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
@@ -36,8 +35,8 @@ if __name__ == "__main__" or "data_loading" not in __name__:
     from windowers import WindowGenerator
     from splitters import DataSplitter
     from normalizers import UnifiedScaler
+    from splitters import DataSplitter
 else:
-    # 作为模块导入时（python -m data_loading.main 或 from data_loading.main import ...）
     from .constants import (
         DEFAULT_FEATURE_COLS,
         DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
@@ -90,6 +89,33 @@ class StaticPreprocessor:
     def filter_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
         """委托给 DataFilter 过滤异常值"""
         return self.filter.filter_outliers(df)
+
+    def _add_derived_features(self, df: pd.DataFrame, window_size: int = 5) -> pd.DataFrame:
+        """添加衍生特征（9 特征模式）"""
+        df = df.copy()
+
+        # 按 location + PRN 排序
+        df = df.sort_values(['location', 'PRN', 'GPS_Time(s)']).reset_index(drop=True)
+
+        # 添加差分特征
+        df["Delta_CNR"] = df.groupby(['location', 'PRN'])['C/N0'].diff().fillna(0)
+        df["Delta_Elevation"] = df.groupby(['location', 'PRN'])['Elevation'].diff().fillna(0)
+        df["Delta_Azimuth"] = df.groupby(['location', 'PRN'])['Azimuth'].diff().fillna(0)
+
+        # 添加滑动标准差特征
+        df["CNR_std"] = df.groupby(['location', 'PRN'])['C/N0'].transform(
+            lambda x: x.rolling(window=window_size, min_periods=1).std()
+        ).fillna(0)
+
+        df["PrRes_std"] = df.groupby(['location', 'PRN'])['Pseudorange_residual'].transform(
+            lambda x: x.rolling(window=window_size, min_periods=1).std()
+        ).fillna(0)
+
+        # 填充 NaN
+        df = df.fillna(0)
+
+        logger.info(f"衍生特征添加完成，总列数：{len(df.columns)}")
+        return df
 
     def _get_split_indices(
         self,
@@ -156,21 +182,32 @@ class StaticPreprocessor:
         max_satellites: int = DEFAULT_MAX_SATELLITES,
         split_mode: str = DEFAULT_SPLIT_MODE,
     ) -> Dict:
-        """执行完整的预处理流程"""
+        """执行完整的预处理流程
+
+        Args:
+            window_size: 时间窗口大小
+            max_satellites: 最大卫星数
+            split_mode: 划分模式 (indomain/outdomain)
+        """
         # 1. 加载数据
         df = self.loader.load_and_merge()
 
         # 2. 过滤异常值
         df = self.filter.filter_outliers(df)
 
-        # 3. 生成 STCA 输入（时间通道 + 空间通道）- 使用传入的 window_size
+        # 3. 添加衍生特征（如果使用 9 特征）
+        if len(self.feature_cols) == 9:
+            logger.info("添加衍生特征（9 特征模式）...")
+            df = self._add_derived_features(df, window_size=5)
+
+        # 4. 生成 STCA 输入（时间通道 + 空间通道）
         windower = WindowGenerator(self.feature_cols, window_size, max_satellites)
         X_temporal, X_spatial, y, locations = windower.generate_stca_inputs(df)
 
-        # 4. 划分数据集
+        # 5. 划分数据集
         indices = self._get_split_indices(locations, y, split_mode)
 
-        # 5. 标准化（仅使用训练集拟合）
+        # 6. 标准化（仅使用训练集拟合）
         self.scaler = UnifiedScaler.from_data(
             X_temporal[indices["train"]],
             X_spatial[indices["train"]]
@@ -199,7 +236,7 @@ class StaticPreprocessor:
             f"验证集：{n_val}, 测试集：{n_test}"
         )
 
-        # 7. 确定地点信息
+        # 8. 确定地点信息
         if split_mode == "indomain":
             train_locations = val_locations = test_locations = "indomain"
         else:

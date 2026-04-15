@@ -124,6 +124,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 import numpy as np
 from pathlib import Path
 
@@ -455,16 +456,18 @@ class STCAModel(nn.Module):
             'val_acc': [],
             'val_f1': [],
         }
-        
-        # 进度跟踪
-        import threading
-        progress_lock = threading.Lock()
-        progress_interval = max(1, epochs // 10)  # 每 10% 的 epoch 更新一次
 
         # 检查是否需要双输入
         dual_input = X_train_temporal is not None
 
-        for epoch in range(epochs):
+        # 创建 epoch 进度条
+        epoch_iterator = tqdm(range(epochs), desc="Training", unit="epoch")
+
+        # 获取 logger 用于记录训练日志
+        from utils.logger_config import setup_logger
+        train_logger = setup_logger(__name__)
+
+        for epoch in epoch_iterator:
             self.train()
             epoch_loss = 0
             epoch_correct = 0
@@ -472,7 +475,10 @@ class STCAModel(nn.Module):
             all_train_preds = []
             all_train_targets = []
 
-            for batch_data in train_loader:
+            # 训练批次进度条
+            batch_iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False, unit="batch")
+
+            for batch_data in batch_iterator:
                 if dual_input:
                     # 双输入：(spatial, temporal, labels)
                     batch_x_spatial, batch_x_temporal, batch_y = batch_data
@@ -511,7 +517,7 @@ class STCAModel(nn.Module):
             epoch_acc = epoch_correct / epoch_total
 
             # F1 分数（需要 sklearn）
-            from sklearn.metrics import f1_score
+            from sklearn.metrics import f1_score, confusion_matrix
             train_f1 = 100. * f1_score(all_train_targets, all_train_preds, average='binary', zero_division=0)
 
             history['train_loss'].append(epoch_loss)
@@ -583,15 +589,55 @@ class STCAModel(nn.Module):
                 # 学习率调度器 step
                 if scheduler is not None:
                     scheduler.step(val_loss)
+                    # 记录当前学习率
+                    current_lr = optimizer.param_groups[0]['lr']
+                    train_logger.info(f"  Learning rate: {current_lr:.6f}")
 
                 if verbose:
-                    logger.info(
-                        f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}, Train F1: {train_f1:.2f}%, "
-                        f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.2f}%"
-                    )
+                    # 计算 TP/TN/FP/FN
+                    tn_train, fp_train, fn_train, tp_train = confusion_matrix(all_train_targets, all_train_preds).ravel()
+                    tn, fp, fn, tp = confusion_matrix(all_val_targets, all_val_preds).ravel()
+                    
+                    # 计算 Precision 和 Recall
+                    prec_train = tp_train / (tp_train + fp_train) if (tp_train + fp_train) > 0 else 0
+                    rec_train = tp_train / (tp_train + fn_train) if (tp_train + fn_train) > 0 else 0
+                    prec = tp / (tp + fp) if (tp + fp) > 0 else 0
+                    rec = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+                    # 分多行打印训练集和验证集指标
+                    log_lines = [
+                        f"Epoch {epoch+1}/{epochs}:",
+                        f" Train:  TP={tp_train}, TN={tn_train}, FP={fp_train}, FN={fn_train}",
+                        f"         Loss={epoch_loss:.4f}, Acc={epoch_acc:.4f}, Pre={prec_train:.4f}, Rec={rec_train:.4f}, F1={train_f1:.2f}%",
+                        f" Val:    TP={tp}, TN={tn}, FP={fp}, FN={fn}",
+                        f"         Loss={val_loss:.4f}, Acc={val_acc:.4f}, Pre={prec:.4f}, Rec={rec:.4f}, F1={val_f1:.2f}%",
+                    ]
+                    for line in log_lines:
+                        tqdm.write(line)
+                    # 记录到日志文件（保持相同格式）
+                    for line in log_lines:
+                        train_logger.info(line)
+
+                    # 更新 epoch 进度条描述
+                    epoch_iterator.set_description(f"Training [Val Loss={val_loss:.4f}, F1={val_f1:.2f}%]")
             else:
                 if verbose:
-                    logger.info(f"Epoch {epoch+1}/{epochs} - Train Loss: {epoch_loss:.4f}, Train Acc: {epoch_acc:.4f}")
+                    tn_train, fp_train, fn_train, tp_train = confusion_matrix(all_train_targets, all_train_preds).ravel()
+                    prec_train = tp_train / (tp_train + fp_train) if (tp_train + fp_train) > 0 else 0
+                    rec_train = tp_train / (tp_train + fn_train) if (tp_train + fn_train) > 0 else 0
+
+                    log_lines = [
+                        f"Epoch {epoch+1}/{epochs}:",
+                        f"  Train: Loss={epoch_loss:.4f}, Acc={epoch_acc:.4f}, Pre={prec_train:.4f}, Rec={rec_train:.4f}, F1={train_f1:.2f}%",
+                        f"         TP={tp_train}, TN={tn_train}, FP={fp_train}, FN={fn_train}",
+                    ]
+                    for line in log_lines:
+                        tqdm.write(line)
+                    # 记录到日志文件（保持相同格式）
+                    for line in log_lines:
+                        train_logger.info(line)
+
+                    epoch_iterator.set_description(f"Training [Loss={epoch_loss:.4f}]")
 
             # 调用进度回调函数（如提供）
             if progress_callback:
