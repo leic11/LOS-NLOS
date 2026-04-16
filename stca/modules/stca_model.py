@@ -252,19 +252,20 @@ class STCAModel(nn.Module):
                 num_heads=cross_attn_num_heads,
                 dropout_rate=cross_attn_dropout,
             )
-            cross_attn_out_dim = self.cross_attention.embed_dim
+            fusion_out_dim = self.cross_attention.embed_dim
         else:
             self.cross_attention = None
-            # 无交叉注意力时，直接使用时间编码器输出
-            cross_attn_out_dim = temporal_out_dim
+            # Concat 基线模型：拼接时间 + 空间特征
+            # 空间特征经过平均池化后维度为 spatial_embed_dim
+            fusion_out_dim = temporal_out_dim + spatial_embed_dim
 
         # 稀疏表示层（可选模块，论文 III-F）
         if use_sparse_representation:
-            self.sparse_rep = SparseRepresentation(embed_dim=cross_attn_out_dim)
-            classifier_input_dim = cross_attn_out_dim
+            self.sparse_rep = SparseRepresentation(embed_dim=fusion_out_dim)
+            classifier_input_dim = fusion_out_dim
         else:
             self.sparse_rep = None
-            classifier_input_dim = cross_attn_out_dim
+            classifier_input_dim = fusion_out_dim
         # Classifier: 3层全连接层，符合论文IV.E节
         # 第1-2层: ReLU激活
         # 第3层(输出层): 1个神经元 + sigmoid激活
@@ -330,15 +331,29 @@ class STCAModel(nn.Module):
                 sparse_emb = self.sparse_rep(cross_attn_out.squeeze(1))
             else:
                 sparse_emb = cross_attn_out.squeeze(1)
+
+            # 用于 return_features 的融合特征
+            fusion_features = cross_attn_out
         else:
-            # 无交叉注意力：直接使用时间编码器输出
+            # 无交叉注意力：Concat 基线模型（论文对比实验）
+            # 将空间特征和时间特征直接拼接
             attn_weights = None
             cross_attn_out = None
-            
+
+            # 空间特征聚合：对 num_sats 维度取平均池化，得到 (batch, spatial_embed_dim)
+            spatial_pooled = spatial_emb.mean(dim=1)  # (batch, 64)
+
+            # Concat 拼接：[h_t, h_s] -> (batch, temporal_out_dim + spatial_embed_dim)
+            fused_features = torch.cat([temporal_emb, spatial_pooled], dim=-1)
+
             if self.use_sparse_representation and self.sparse_rep is not None:
-                sparse_emb = self.sparse_rep(temporal_emb)
+                sparse_emb = self.sparse_rep(fused_features)
             else:
-                sparse_emb = temporal_emb
+                # 基线情况：直接输出拼接特征，不做稀疏变换
+                sparse_emb = fused_features
+
+            # 用于 return_features 的融合特征
+            fusion_features = fused_features
 
         # 分类预测
         logits = self.classifier(sparse_emb)
@@ -346,10 +361,10 @@ class STCAModel(nn.Module):
         # 返回结果
         if return_attention_weights and attn_weights is not None:
             if return_features:
-                return logits, attn_weights, cross_attn_out
+                return logits, attn_weights, fusion_features
             return logits, attn_weights
         elif return_features:
-            return logits, cross_attn_out
+            return logits, fusion_features
         else:
             return logits
 

@@ -17,20 +17,6 @@ DEFAULT_FEATURE_COLS = [
     "Delta_Azimuth",           # 方位角变化率
 ]
 
-# 扩展的 9 个特征（4 个原始 + 5 个衍生）
-# 衍生特征与 basemodel 保持一致的命名
-EXTENDED_FEATURE_COLS = [
-    "C/N0",                    # 载噪比 (dB-Hz)
-    "Elevation",               # 高度角 (度)
-    "Azimuth",                 # 方位角 (度)
-    "Pseudorange_residual",    # 伪距残差 (m)
-    "Delta_CNR",               # CNR 变化率（一阶差分）
-    "CNR_std",                 # CNR 标准差
-    "PrRes_std",               # 伪距残差标准差
-    "Delta_Elevation",         # 高度角变化率
-    "Delta_Azimuth",           # 方位角变化率
-]
-
 # 标签列名和映射
 LABEL_COL = "LOS/NLOS_label"
 LABEL_MAP = {-1: 0, 1: 1}  # NLOS→0, LOS→1
@@ -39,7 +25,7 @@ LABEL_MAP = {-1: 0, 1: 1}  # NLOS→0, LOS→1
 DEFAULT_LOCATION_PREFIXES = ["P2", "P3", "P4", "P5", "P6", "P7", "P8"]
 
 # 数据划分默认值
-DEFAULT_SPLIT_MODE = "indomain"  # 默认划分模式：indomain 或 outdomain
+DEFAULT_SPLIT_MODE = "outdomain"  # 默认划分模式：indomain 或 outdomain
 DEFAULT_TEST_SIZE = 0.3
 DEFAULT_VAL_SIZE = 0.2
 DEFAULT_RANDOM_SEED = 42

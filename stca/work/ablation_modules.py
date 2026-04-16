@@ -90,8 +90,8 @@ MODULE_CONFIGS = {
     },
 }
 
-# 数据划分模式（使用 constants.py 默认值）
-SPLIT_MODES = [DEFAULT_SPLIT_MODE]
+# 数据划分模式：同时测试内域和外域泛化能力
+SPLIT_MODES = ["indomain", "outdomain"]
 
 # 输出目录
 OUTPUT_DIR = ROOT_DIR / "outputs" / "stca" / "ablation" / "modules"
