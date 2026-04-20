@@ -25,10 +25,10 @@ if _current_dir not in sys.path:
 if __name__ == "__main__" or "data_loading" not in __name__:
     from constants import (
         DEFAULT_FEATURE_COLS,
-        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
+        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE,
         DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
         PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
-        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
+        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
     )
     from loaders import CSVLoader
     from filters import DataFilter
@@ -39,10 +39,10 @@ if __name__ == "__main__" or "data_loading" not in __name__:
 else:
     from .constants import (
         DEFAULT_FEATURE_COLS,
-        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE,
+        DEFAULT_LOCATION_PREFIXES, DEFAULT_SPLIT_MODE, DEFAULT_TEST_SIZE,
         DEFAULT_RANDOM_SEED, DEFAULT_WINDOW_SIZE, DEFAULT_MAX_SATELLITES,
         PRE_FILTER_THRESHOLD, PR_RATE_INVALID,
-        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_VAL_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
+        OUTDOMAIN_TRAIN_LOCATIONS, OUTDOMAIN_TEST_LOCATIONS,
     )
     from .loaders import CSVLoader
     from .filters import DataFilter
@@ -62,13 +62,11 @@ class StaticPreprocessor:
         data_dir: str,
         feature_cols: List[str] = DEFAULT_FEATURE_COLS,
         test_size: float = DEFAULT_TEST_SIZE,
-        val_size: float = DEFAULT_VAL_SIZE,
         random_seed: int = DEFAULT_RANDOM_SEED,
     ):
         self.data_dir = data_dir
         self.feature_cols = feature_cols
         self.test_size = test_size
-        self.val_size = val_size
         self.random_seed = random_seed
 
         # 组合各模块
@@ -79,7 +77,7 @@ class StaticPreprocessor:
             DEFAULT_WINDOW_SIZE,
             DEFAULT_MAX_SATELLITES
         )
-        self.splitter = DataSplitter(random_seed, val_size)
+        self.splitter = DataSplitter(random_seed)
         self.scaler: Optional[UnifiedScaler] = None
 
     def load_and_merge_csv(self) -> pd.DataFrame:
@@ -90,46 +88,18 @@ class StaticPreprocessor:
         """委托给 DataFilter 过滤异常值"""
         return self.filter.filter_outliers(df)
 
-    def _add_derived_features(self, df: pd.DataFrame, window_size: int = 5) -> pd.DataFrame:
-        """添加衍生特征（9 特征模式）"""
-        df = df.copy()
-
-        # 按 location + PRN 排序
-        df = df.sort_values(['location', 'PRN', 'GPS_Time(s)']).reset_index(drop=True)
-
-        # 添加差分特征
-        df["Delta_CNR"] = df.groupby(['location', 'PRN'])['C/N0'].diff().fillna(0)
-        df["Delta_Elevation"] = df.groupby(['location', 'PRN'])['Elevation'].diff().fillna(0)
-        df["Delta_Azimuth"] = df.groupby(['location', 'PRN'])['Azimuth'].diff().fillna(0)
-
-        # 添加滑动标准差特征
-        df["CNR_std"] = df.groupby(['location', 'PRN'])['C/N0'].transform(
-            lambda x: x.rolling(window=window_size, min_periods=1).std()
-        ).fillna(0)
-
-        df["PrRes_std"] = df.groupby(['location', 'PRN'])['Pseudorange_residual'].transform(
-            lambda x: x.rolling(window=window_size, min_periods=1).std()
-        ).fillna(0)
-
-        # 填充 NaN
-        df = df.fillna(0)
-
-        logger.info(f"衍生特征添加完成，总列数：{len(df.columns)}")
-        return df
-
     def _get_split_indices(
         self,
         locations: np.ndarray,
         y: np.ndarray,
         split_mode: str
     ) -> Dict[str, np.ndarray]:
-        """获取训练集/验证集/测试集的划分索引"""
+        """获取训练集/测试集的划分索引"""
         if split_mode == "indomain":
-            # Indomain：每个地点内随机划分
-            # 使用全 1 作为虚拟特征，因为 split_indomain 只需要索引划分
+            # Indomain：每个地点内随机划分 70% 训练 / 30% 测试
             X_dummy = np.ones((len(locations), 1))
 
-            X_train, X_val, X_test, y_train, y_val, y_test = self.splitter.split_indomain(
+            X_train, X_test, y_train, y_test = self.splitter.split_indomain(
                 X_dummy, y, locations, self.test_size
             )
 
@@ -149,30 +119,19 @@ class StaticPreprocessor:
                 shuffled = np.random.permutation(n_samples)
 
                 test_idx = loc_indices[shuffled[:n_test]]
-                train_val_idx = loc_indices[shuffled[n_test:]]
+                train_idx = loc_indices[shuffled[n_test:]]
 
-                train_indices.extend(train_val_idx)
+                train_indices.extend(train_idx)
                 test_indices.extend(test_idx)
 
-            # 从训练集中划分验证集
-            train_indices = np.array(train_indices)
-            n_val = int(len(train_indices) * self.splitter.val_size)
-            np.random.seed(self.splitter.random_seed)
-            shuffled = np.random.permutation(len(train_indices))
-
-            val_idx = train_indices[shuffled[:n_val]]
-            train_idx = train_indices[shuffled[n_val:]]
-
             return {
-                "train": train_idx,
-                "val": val_idx,
+                "train": np.array(train_indices),
                 "test": np.array(test_indices)
             }
         else:
             # Outdomain：按地点划分，返回布尔掩码
             return {
                 "train": np.isin(locations, OUTDOMAIN_TRAIN_LOCATIONS),
-                "val": np.isin(locations, OUTDOMAIN_VAL_LOCATIONS),
                 "test": np.isin(locations, OUTDOMAIN_TEST_LOCATIONS)
             }
 
@@ -195,19 +154,14 @@ class StaticPreprocessor:
         # 2. 过滤异常值
         df = self.filter.filter_outliers(df)
 
-        # 3. 添加衍生特征（如果使用 9 特征）
-        if len(self.feature_cols) == 9:
-            logger.info("添加衍生特征（9 特征模式）...")
-            df = self._add_derived_features(df, window_size=5)
-
-        # 4. 生成 STCA 输入（时间通道 + 空间通道）
+        # 3. 生成 STCA 输入（时间通道 + 空间通道）
         windower = WindowGenerator(self.feature_cols, window_size, max_satellites)
         X_temporal, X_spatial, y, locations = windower.generate_stca_inputs(df)
 
-        # 5. 划分数据集
+        # 4. 划分数据集
         indices = self._get_split_indices(locations, y, split_mode)
 
-        # 6. 标准化（仅使用训练集拟合）
+        # 5. 标准化（仅使用训练集拟合）
         self.scaler = UnifiedScaler.from_data(
             X_temporal[indices["train"]],
             X_spatial[indices["train"]]
@@ -215,50 +169,40 @@ class StaticPreprocessor:
 
         # 6. 变换所有数据
         X_train_temporal = self.scaler.transform(X_temporal[indices["train"]])
-        X_val_temporal = self.scaler.transform(X_temporal[indices["val"]])
         X_test_temporal = self.scaler.transform(X_temporal[indices["test"]])
 
         X_train_spatial = self.scaler.transform(X_spatial[indices["train"]])
-        X_val_spatial = self.scaler.transform(X_spatial[indices["val"]])
         X_test_spatial = self.scaler.transform(X_spatial[indices["test"]])
 
         y_train = y[indices["train"]]
-        y_val = y[indices["val"]]
         y_test = y[indices["test"]]
 
         # 计算实际样本数（outdomain 模式下 indices 是布尔掩码）
         n_train = np.sum(indices["train"]) if indices["train"].dtype == bool else len(indices["train"])
-        n_val = np.sum(indices["val"]) if indices["val"].dtype == bool else len(indices["val"])
         n_test = np.sum(indices["test"]) if indices["test"].dtype == bool else len(indices["test"])
 
         logger.info(
-            f"STCA 划分 - 训练集：{n_train}, "
-            f"验证集：{n_val}, 测试集：{n_test}"
+            f"STCA 划分 - 训练集：{n_train}, 测试集：{n_test}"
         )
 
-        # 8. 确定地点信息
+        # 7. 确定地点信息
         if split_mode == "indomain":
-            train_locations = val_locations = test_locations = "indomain"
+            train_locations = test_locations = "indomain"
         else:
             train_locations = OUTDOMAIN_TRAIN_LOCATIONS
-            val_locations = OUTDOMAIN_VAL_LOCATIONS
             test_locations = OUTDOMAIN_TEST_LOCATIONS
 
         return {
             "X_train_temporal": X_train_temporal,
-            "X_val_temporal": X_val_temporal,
             "X_test_temporal": X_test_temporal,
             "X_train_spatial": X_train_spatial,
-            "X_val_spatial": X_val_spatial,
             "X_test_spatial": X_test_spatial,
             "y_train": y_train,
-            "y_val": y_val,
             "y_test": y_test,
             "scaler": self.scaler,
             "feature_cols": self.feature_cols,
             "split_mode": split_mode,
             "train_locations": train_locations,
-            "val_locations": val_locations,
             "test_locations": test_locations,
             "window_size": window_size,
             "max_satellites": max_satellites,
@@ -270,10 +214,8 @@ class StaticPreprocessor:
 
         save_dict = {
             "X_train": data.get("X_train_temporal"),
-            "X_val": data.get("X_val_temporal"),
             "X_test": data.get("X_test_temporal"),
             "y_train": data["y_train"],
-            "y_val": data["y_val"],
             "y_test": data["y_test"],
             "scaler_mean": scaler.mean_ if scaler else None,
             "scaler_scale": scaler.scale_ if scaler else None,
@@ -282,7 +224,6 @@ class StaticPreprocessor:
             "window_size": data.get("window_size", DEFAULT_WINDOW_SIZE),
             "max_satellites": data.get("max_satellites", DEFAULT_MAX_SATELLITES),
             "X_train_spatial": data.get("X_train_spatial"),
-            "X_val_spatial": data.get("X_val_spatial"),
             "X_test_spatial": data.get("X_test_spatial"),
         }
 
@@ -304,10 +245,8 @@ class StaticPreprocessor:
 
         return {
             "X_train_temporal": loader["X_train"],
-            "X_val_temporal": loader["X_val"],
             "X_test_temporal": loader["X_test"],
             "y_train": loader["y_train"],
-            "y_val": loader["y_val"],
             "y_test": loader["y_test"],
             "scaler": scaler,
             "feature_cols": list(loader["feature_cols"]),
@@ -315,7 +254,6 @@ class StaticPreprocessor:
             "window_size": int(loader.get("window_size", DEFAULT_WINDOW_SIZE)),
             "max_satellites": int(loader.get("max_satellites", DEFAULT_MAX_SATELLITES)),
             "X_train_spatial": loader.get("X_train_spatial"),
-            "X_val_spatial": loader.get("X_val_spatial"),
             "X_test_spatial": loader.get("X_test_spatial"),
         }
 
@@ -351,9 +289,9 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # 数据目录在 stca 的父目录下
     data_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "data for sharing_csv")
-    # 输出目录在 stca 目录下
+    # 输出目录在项目根目录（DevLab）下
     output_path = args.output or os.path.join(
-        os.path.dirname(script_dir),
+        os.path.dirname(os.path.dirname(script_dir)),
         f"static_processed_{args.split_mode}.npz"
     )
 

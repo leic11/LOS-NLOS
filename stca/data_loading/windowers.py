@@ -135,31 +135,40 @@ class WindowGenerator:
         self,
         df: pd.DataFrame,
         window_end_times: np.ndarray,
+        locations: np.ndarray = None,
     ) -> np.ndarray:
         """
-        生成空间通道输入（同一时刻所有卫星）
+        生成空间通道输入（同一时刻同一地点的所有卫星）
 
         Args:
             df: 预处理后的 DataFrame
             window_end_times: 窗口结束时间数组
+            locations: 每个窗口对应的地点数组，用于匹配空间通道的地点
 
         Returns:
             X_spatial: (N, max_satellites, 4)
         """
-        # 按 GPS_Time 分组
-        time_groups = df.groupby("GPS_Time(s)")
-        time_to_sat_features = {}
+        # 按 (GPS_Time, location) 联合分组 - 确保同一时刻不同地点的数据不混合
+        df["_time_loc_key"] = list(
+            zip(df["GPS_Time(s)"].values, df["location"].values)
+        )
+        time_loc_groups = df.groupby("_time_loc_key")
+        time_loc_to_sat_features = {}
 
-        for t, group in time_groups:
+        for (t, loc), group in time_loc_groups:
             sat_features = group[self.feature_cols].values.astype(np.float32)
             sat_features = np.nan_to_num(sat_features, nan=0.0, posinf=0.0, neginf=0.0)
-            time_to_sat_features[t] = sat_features
+            time_loc_to_sat_features[(t, loc)] = sat_features
+
+        df = df.drop(columns=["_time_loc_key"])
 
         X_spatial_list = []
 
-        for end_time in window_end_times:
-            if end_time in time_to_sat_features:
-                sat_features = np.array(time_to_sat_features[end_time], dtype=np.float32)
+        assert locations is not None, "locations 参数不能为空"
+        for end_time, loc in zip(window_end_times, locations):
+            key = (end_time, loc)
+            if key in time_loc_to_sat_features:
+                sat_features = np.array(time_loc_to_sat_features[key], dtype=np.float32)
                 n_sat = len(sat_features)
 
                 if n_sat >= self.max_satellites:
@@ -195,7 +204,7 @@ class WindowGenerator:
             X_temporal, X_spatial, y, locations
         """
         X_temporal, y, locations, window_end_times = self.generate_temporal_input(df)
-        X_spatial = self.generate_spatial_input(df, window_end_times)
+        X_spatial = self.generate_spatial_input(df, window_end_times, locations)
 
         # 验证对齐
         assert len(X_temporal) == len(X_spatial) == len(y), (
