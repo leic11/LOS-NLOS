@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdflatex -interaction=nonstopmode main.tex)",
+      "Read(//c/Users/86195/AppData/Local/MiKTeX/miktex/log/**)",
+      "Bash(xelatex -interaction=nonstopmode main.tex)",
+      "Bash(choco --version)",
+      "Bash(perl --version)",
+      "Read(//usr/**)",
+      "Bash(grep -E \"\\(Error|Warning|success|Output|main\\\\\\\\.pdf\\)\")",
+      "Bash(PATH=\"/c/Windows/System32:/c/Windows:/c/msys64/usr/bin:/c/msys64/usr/local/bin\" xelatex -interaction=nonstopmode main.tex)",
+      "Bash(PATH=\"/d/desktop/app/installation/MiKTeX/miktex/bin/x64:/c/Windows/System32:/c/Windows:/c/msys64/usr/bin:/c/msys64/usr/local/bin\" xelatex -interaction=nonstopmode main.tex)",
+      "Bash(export PATH=\"/d/desktop/app/installation/MiKTeX/miktex/bin/x64:/c/Windows/System32:/c/Windows\")",
+      "Bash(PATH=\"/d/desktop/app/installation/MiKTeX/miktex/bin/x64:/c/Windows/System32:/c/Windows:/c/msys64/usr/bin\" xelatex -interaction=nonstopmode main.tex)"
+    ]
+  }
+}

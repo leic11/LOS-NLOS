@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(reg query *)",
+      "Bash(tasklist)",
+      "Bash(findstr xelatex *)",
+      "Bash(taskkill /F /PID 13068)",
+      "Bash(process-exists 13068)",
+      "Bash(where xelatex *)",
+      "Bash(findstr 18384)",
+      "Bash(taskkill /PID 18384)",
+      "Bash(powershell \"Stop-Process -Id 18384 -Force\")",
+      "Bash(dir \"c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\main.pdf\")",
+      "Bash(powershell -Command \"Get-Process xelatex -ErrorAction SilentlyContinue | Stop-Process -Force\")"
+    ]
+  }
+}

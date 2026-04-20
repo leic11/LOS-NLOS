@@ -1,0 +1,223 @@
+\chapter{相关理论与技术基础}
+
+\section{深度学习基础}
+
+\subsection{神经网络基本原理}
+
+人工神经网络（Artificial Neural Network, ANN）是深度学习的基础模型，灵感来源于生物神经元的信息处理机制。一个典型的神经元接收多个输入信号$x_1, x_2, \ldots, x_n$，通过加权求和并经过非线性激活函数产生输出：
+
+\begin{equation}
+y = f\left(\sum_{i=1}^{n} w_i x_i + b\right)
+\end{equation}
+
+其中$w_i$为连接权重，$b$为偏置项，$f(\cdot)$为激活函数。常用的激活函数包括 ReLU（Rectified Linear Unit）、Sigmoid 和 Tanh 等。
+
+多层神经网络通过堆叠多个神经元层形成深层结构，能够学习输入数据的层次化特征表示。设第$l$层的输出为：
+
+\begin{equation}
+\bm{h}^{(l)} = f(\bm{W}^{(l)} \bm{h}^{(l-1)} + \bm{b}^{(l)})
+\end{equation}
+
+其中$\bm{W}^{(l)}$为权重矩阵，$\bm{b}^{(l)}$为偏置向量，$\bm{h}^{(0)}$为输入层。
+
+\subsection{反向传播与优化算法}
+
+神经网络通过反向传播算法（Backpropagation）进行训练。给定损失函数$\mathcal{L}$，利用链式法则计算梯度：
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \bm{W}^{(l)}} = \frac{\partial \mathcal{L}}{\partial \bm{h}^{(L)}} \cdot \prod_{k=l}^{L-1} \frac{\partial \bm{h}^{(k+1)}}{\partial \bm{h}^{(k)}} \cdot \frac{\partial \bm{h}^{(l)}}{\partial \bm{W}^{(l)}}
+\end{equation}
+
+参数更新采用梯度下降法：
+
+\begin{equation}
+\bm{W}^{(l)} \leftarrow \bm{W}^{(l)} - \eta \frac{\partial \mathcal{L}}{\partial \bm{W}^{(l)}}
+\end{equation}
+
+其中$\eta$为学习率。本研究采用 Adam 优化器，结合动量法和自适应学习率的优点，收敛速度更快且对超参数不敏感。
+
+\section{注意力机制}
+
+\subsection{自注意力原理}
+
+注意力机制（Attention Mechanism）源于人类视觉系统的选择性关注特性。在深度学习中，注意力机制允许模型动态地关注输入序列中的重要部分。
+
+自注意力（Self-Attention）机制通过计算输入序列内部各位置之间的相关性来实现信息聚合。给定输入序列$\bm{X} = [\bm{x}_1, \bm{x}_2, \ldots, \bm{x}_N]$，自注意力计算过程如下：
+
+\begin{equation}
+\bm{Q} = \bm{X}\bm{W}_Q, \quad \bm{K} = \bm{X}\bm{W}_K, \quad \bm{V} = \bm{X}\bm{W}_V
+\end{equation}
+
+\begin{equation}
+\text{Attention}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}\left(\frac{\bm{Q}\bm{K}^T}{\sqrt{d_k}}\right)\bm{V}
+\end{equation}
+
+其中$\bm{Q}$、$\bm{K}$、$\bm{V}$分别为查询（Query）、键（Key）、值（Value）矩阵，$d_k$为缩放因子，用于防止点积过大导致梯度消失。
+
+\subsection{Transformer 架构}
+
+Transformer 是完全基于注意力机制的序列建模架构，摒弃了传统的循环和卷积结构。其核心组件包括：
+
+（1）多头注意力（Multi-Head Attention）：并行执行多个注意力操作，捕捉不同子空间的特征：
+
+\begin{equation}
+\text{MultiHead}(\bm{Q}, \bm{K}, \bm{V}) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h)\bm{W}^O
+\end{equation}
+
+其中$\text{head}_i = \text{Attention}(\bm{Q}\bm{W}_i^Q, \bm{K}\bm{W}_i^K, \bm{V}\bm{W}_i^V)$。
+
+（2）位置前馈网络（Position-wise Feed-Forward Network）：对每个位置独立应用两层全连接变换：
+
+\begin{equation}
+\text{FFN}(\bm{x}) = \text{ReLU}(\bm{x}\bm{W}_1 + \bm{b}_1)\bm{W}_2 + \bm{b}_2
+\end{equation}
+
+（3）层归一化与残差连接：加速训练收敛并缓解梯度消失问题。
+
+\section{序列建模方法}
+
+\subsection{RNN 与 LSTM 原理}
+
+循环神经网络（Recurrent Neural Network, RNN）通过引入隐藏状态$\bm{h}_t$来建模序列数据的时间依赖性：
+
+\begin{equation}
+\bm{h}_t = \tanh(\bm{W}_{xh}\bm{x}_t + \bm{W}_{hh}\bm{h}_{t-1} + \bm{b}_h)
+\end{equation}
+
+然而，标准 RNN 存在梯度消失问题，难以捕捉长程依赖关系。长短期记忆网络（Long Short-Term Memory, LSTM）通过门控机制有效解决了这一问题。
+
+LSTM 单元包含三个门控结构：
+
+（1）遗忘门：控制从上一时刻单元状态中遗忘的信息量
+
+\begin{equation}
+\bm{f}_t = \sigma(\bm{W}_f \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_f)
+\end{equation}
+
+（2）输入门：控制当前时刻新信息的写入量
+
+\begin{equation}
+\bm{i}_t = \sigma(\bm{W}_i \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_i)
+\end{equation}
+
+\begin{equation}
+\tilde{\bm{C}}_t = \tanh(\bm{W}_C \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_C)
+\end{equation}
+
+（3）输出门：控制单元状态的输出信息
+
+\begin{equation}
+\bm{o}_t = \sigma(\bm{W}_o \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_o)
+\end{equation}
+
+单元状态和隐藏状态的更新公式为：
+
+\begin{equation}
+\bm{C}_t = \bm{f}_t \odot \bm{C}_{t-1} + \bm{i}_t \odot \tilde{\bm{C}}_t
+\end{equation}
+
+\begin{equation}
+\bm{h}_t = \bm{o}_t \odot \tanh(\bm{C}_t)
+\end{equation}
+
+\subsection{双向 LSTM}
+
+双向 LSTM（Bi-directional LSTM, BiLSTM）通过同时从正向和反向两个方向处理序列，能够利用过去和未来的上下文信息：
+
+\begin{equation}
+\overrightarrow{\bm{h}_t} = \text{LSTM}_{fwd}(\bm{x}_t, \overrightarrow{\bm{h}_{t-1}})
+\end{equation}
+
+\begin{equation}
+\overleftarrow{\bm{h}_t} = \text{LSTM}_{bwd}(\bm{x}_t, \overleftarrow{\bm{h}_{t+1}})
+\end{equation}
+
+\begin{equation}
+\bm{h}_t = [\overrightarrow{\bm{h}_t}; \overleftarrow{\bm{h}_t}]
+\end{equation}
+
+双向 LSTM 在需要利用完整上下文信息的任务中表现优异，如序列标注、文本分类等。
+
+\section{稀疏表示理论}
+
+\subsection{稀疏性概念}
+
+稀疏表示（Sparse Representation）是指用少量非零系数的线性组合来表示信号的表示方法。其数学形式为：
+
+\begin{equation}
+\bm{y} = \bm{D}\bm{x}, \quad \|\bm{x}\|_0 \leq k
+\end{equation}
+
+其中$\bm{D}$为字典矩阵，$\bm{x}$为稀疏系数向量，$\|\cdot\|_0$为$L_0$范数（非零元素个数），$k$为稀疏度。
+
+稀疏表示在深度学习中具有以下优势：
+
+（1）提高特征判别性：稀疏激活迫使模型学习更具区分度的特征；
+
+（2）降低计算复杂度：稀疏矩阵运算可大幅减少计算量；
+
+（3）增强模型可解释性：稀疏表示更易于理解和分析；
+
+（4）抑制过拟合：稀疏性约束起到正则化作用。
+
+\subsection{稀疏约束方法}
+
+实现稀疏表示的主要方法包括：
+
+（1）$L_1$正则化：在损失函数中添加$L_1$范数惩罚项
+
+\begin{equation}
+\mathcal{L}_{total} = \mathcal{L}_{task} + \lambda \|\bm{x}\|_1
+\end{equation}
+
+（2）ReLU 激活函数：$\text{ReLU}(x) = \max(0, x)$，天然产生稀疏激活
+
+（3）K-sparse 自编码器：仅保留激活值最大的$k$个神经元
+
+（4）Dropout：训练阶段随机屏蔽部分神经元
+
+\section{GNSS 定位原理}
+
+\subsection{伪距测量原理}
+
+全球导航卫星系统（GNSS）通过测量卫星信号的传播时间来计算接收机与卫星之间的距离（伪距）。伪距观测方程为：
+
+\begin{equation}
+P = \rho + c(dt_r - dt^s) + I + T + \varepsilon_P
+\end{equation}
+
+其中：
+\begin{itemize}
+\item $P$：测量伪距（单位：米）
+\item $\rho$：卫星与接收机的几何距离
+\item $c$：光速
+\item $dt_r$：接收机钟差
+\item $dt^s$：卫星钟差
+\item $I$：电离层延迟
+\item $T$：对流层延迟
+\item $\varepsilon_P$：测量噪声与多路径误差
+\end{itemize}
+
+至少需要 4 颗卫星的伪距观测值才能解算接收机的三维位置和钟差。
+
+\subsection{NLOS 误差产生机制}
+
+在城市峡谷等复杂环境中，GNSS 信号可能被建筑物遮挡，经反射或衍射后到达接收机，形成非视距（NLOS）传播。NLOS 信号的传播路径为：
+
+\begin{equation}
+d_{NLOS} = d_{LOS} + \Delta d_{reflection}
+\end{equation}
+
+其中$\Delta d_{reflection}$为反射引起的额外路径长度，通常为正值。
+
+NLOS 误差对伪距测量的影响为：
+
+\begin{equation}
+P_{NLOS} = P_{LOS} + \varepsilon_{NLOS}
+\end{equation}
+
+其中$\varepsilon_{NLOS}$可达数十米甚至上百米，严重影响定位精度。因此，在进行位置解算前，识别并剔除 NLOS 信号是提高城市环境定位精度的关键步骤。
+
+\section{本章小结}
+
+本章系统介绍了 STCA 模型所依赖的基础理论。深度学习基础部分阐述了神经网络的基本原理和反向传播算法。注意力机制部分详细讲解了自注意力和 Transformer 架构。序列建模部分分析了 RNN 与 LSTM 的门控机制及双向 LSTM 的优势。稀疏表示理论部分讨论了稀疏性的概念、优势与实现方法。GNSS 定位原理部分介绍了伪距测量原理和 NLOS 误差的产生机制，为后续章节的模型设计奠定了理论基础。

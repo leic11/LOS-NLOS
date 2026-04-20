@@ -1,0 +1,203 @@
+\chapter{STCA 核心算法设计}
+
+本章详细阐述时空交叉注意力（STCA）模型的算法设计。模型借鉴 Zeng 等人（2024）提出的架构，针对 GNSS NLOS 识别任务进行定制化设计。
+
+\section{模型总体架构}
+
+STCA 模型采用双输入通道架构，分别处理空间特征和时序特征：
+
+\begin{itemize}
+    \item \textbf{空间输入}：$(B, max\_sats, 4)$，其中$B$为批次大小，$max\_sats$为最大可见卫星数，4 对应 4 个特征（C/N0、高度角、方位角、伪距残差）。
+    \item \textbf{时序输入}：$(B, window\_size, 4)$，其中$window\_size$为时间窗口长度。
+\end{itemize}
+
+模型由五个核心模块串联而成：
+\begin{enumerate}
+    \item 空间编码器（Spatial Encoder）：基于天顶角注意力机制
+    \item 时序编码器（Temporal Encoder）：基于双向 LSTM
+    \item 交叉注意力融合模块（Cross-Attention Fusion）
+    \item 稀疏表示层（Sparse Representation）
+    \item 二分类器（Binary Classifier）
+\end{enumerate}
+
+\section{空间编码器设计}
+
+空间编码器负责从多颗可见卫星的观测特征中提取空间分布信息。考虑到 GNSS 卫星在天空中的几何分布对信号传播特性的影响，本研究设计基于天顶角注意力机制的编码器。
+
+设空间输入为$\bm{X}_{spatial} \in \mathbb{R}^{B \times N \times 4}$，其中$N$为可见卫星数量。首先通过两层全连接网络将原始特征映射到 16 维嵌入空间：
+\begin{equation}
+\bm{H}_{spatial} = \text{ReLU}(\bm{W}_1 \bm{X}_{spatial} + \bm{b}_1)
+\end{equation}
+\begin{equation}
+\bm{H}_{spatial}' = \text{Dropout}(\text{ReLU}(\bm{W}_2 \bm{H}_{spatial} + \bm{b}_2))
+\end{equation}
+
+随后，采用自注意力机制计算卫星间的相互关系。天顶角注意力权重计算如下：
+\begin{equation}
+\bm{Q} = \bm{H}_{spatial}' \bm{W}_Q, \quad \bm{K} = \bm{H}_{spatial}' \bm{W}_K, \quad \bm{V} = \bm{H}_{spatial}' \bm{W}_V
+\end{equation}
+\begin{equation}
+\bm{A}_{spatial} = \text{softmax}\left(\frac{\bm{Q}\bm{K}^T}{\sqrt{d_k}}\right)\bm{V}
+\end{equation}
+
+其中$\bm{W}_Q, \bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 16}$为可学习参数，$d_k=16$为缩放因子。注意力机制使模型能够根据卫星信号质量的相对重要性进行加权聚合。
+
+最后，通过全局平均池化将变长卫星序列压缩为固定长度的空间上下文向量：
+\begin{equation}
+\bm{c}_{spatial} = \frac{1}{N}\sum_{i=1}^{N} \bm{A}_{spatial}^{(i)}
+\end{equation}
+
+\section{时序编码器设计}
+
+时序编码器采用双向长短期记忆网络（Bi-LSTM）处理时间窗口内的信号演化模式。LSTM 通过门控机制有效捕捉长程时间依赖，适合建模 NLOS 状态的时序连续性。
+
+设时序输入为$\bm{X}_{temporal} \in \mathbb{R}^{B \times T \times 4}$，其中$T$为窗口大小。首先通过全连接层将特征映射到 16 维嵌入空间：
+\begin{equation}
+\bm{H}_{temporal} = \text{ReLU}(\bm{W}_t \bm{X}_{temporal} + \bm{b}_t)
+\end{equation}
+
+随后，双向 LSTM 从前向和后向两个方向处理时序数据：
+\begin{equation}
+\overrightarrow{\bm{h}_t} = \text{LSTM}_{fwd}(\bm{H}_{temporal}^{(t)}, \overrightarrow{\bm{h}_{t-1}})
+\end{equation}
+\begin{equation}
+\overleftarrow{\bm{h}_t} = \text{LSTM}_{bwd}(\bm{H}_{temporal}^{(t)}, \overleftarrow{\bm{h}_{t+1}})
+\end{equation}
+\begin{equation}
+\bm{h}_t = [\overrightarrow{\bm{h}_t}; \overleftarrow{\bm{h}_t}]
+\end{equation}
+
+双向 LSTM 的隐藏状态拼接后，提取最后一个时间步的输出作为时序上下文向量：
+\begin{equation}
+\bm{c}_{temporal} = \bm{h}_T
+\end{equation}
+
+\section{交叉注意力融合模块}
+
+交叉注意力机制负责将空间特征与时序特征进行融合。具体而言，将空间编码器输出的空间上下文向量作为查询（Query），时序编码器输出的时序上下文向量作为键（Key）和值（Value）。注意力权重通过空间查询与时序键的相似度计算得到，嵌入维度为 16：
+\begin{equation}
+\bm{A}_{cross} = \text{softmax}\left(\frac{\bm{Q}_{spatial} \bm{K}_{temporal}^T}{\sqrt{d}}\right)
+\end{equation}
+
+计算得到的注意力权重用于加权聚合时序值向量，生成时空融合特征表示：
+\begin{equation}
+\bm{F}_{fused} = \bm{A}_{cross} \bm{V}_{temporal}
+\end{equation}
+
+这一机制使模型能够根据当前卫星空间分布状态，自适应地关注时序信息中的相关内容，建立空间几何分布与信号时间演变之间的关联。
+
+\section{稀疏表示层设计}
+
+交叉注意力模块输出的融合特征经过稀疏表示层进一步处理。稀疏表示层通过线性投影和非线性激活，将 32 维融合特征映射到更紧凑的判别性特征空间：
+\begin{equation}
+\bm{Z} = \text{ReLU}(\bm{W}_s \cdot \bm{F}_{fused} + \bm{b}_s)
+\end{equation}
+
+其中$\bm{W}_s \in \mathbb{R}^{32 \times 32}$为稀疏投影矩阵，$\bm{b}_s$为偏置项，ReLU 激活函数引入非线性并产生稀疏激活模式。稀疏表示的核心思想是迫使模型仅激活与当前分类决策最相关的少数特征维度，从而抑制冗余信息，增强特征的判别能力。
+
+\section{分类器与损失函数}
+
+稀疏特征$\bm{Z}$经过全连接分类层映射到二元分类空间，最终通过 Sigmoid 激活函数输出 NLOS 概率预测：
+\begin{equation}
+\hat{y} = \sigma(\bm{W}_c \cdot \bm{Z} + \bm{b}_c)
+\end{equation}
+
+其中$\bm{W}_c$和$\bm{b}_c$分别为分类层的权重和偏置，$\hat{y} \in [0, 1]$表示预测样本为 NLOS 信号的概率。
+
+模型训练采用二元交叉熵损失函数：
+\begin{equation}
+\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}[y_i \cdot \log(\hat{y}_i) + (1-y_i) \cdot \log(1-\hat{y}_i)]
+\end{equation}
+
+其中$y_i \in \{0, 1\}$为真实标签（0 表示 LOS，1 表示 NLOS），$\hat{y}_i$为模型预测概率。交叉熵损失直接优化预测概率分布与真实分布之间的差异，在预测错误时产生较大梯度，加速模型收敛。
+
+\section{中期检查问题的改进设计}
+
+针对中期检查中暴露的问题，对 STCA 模型进行了针对性改进。
+
+\subsection{针对过拟合问题}
+
+训练过程中观察到训练准确率持续上升而验证准确率停滞的现象，表明模型存在过拟合。为此采取三项措施：其一，在各模块全连接层后均添加 Dropout 层（dropout 率设为 0.5），随机屏蔽部分神经元激活，防止模型对特定特征通道的依赖；其二，引入早停机制，当验证集准确率在连续 10 个 epoch 内未提升时提前终止训练；其三，采用 ReduceLROnPlateau 学习率衰减策略，在验证指标停滞时将学习率降低为原来的 0.1 倍，帮助模型跳出局部最优。
+
+\subsection{针对时序模块利用率不足}
+
+中期检查发现时序编码器对最终预测的贡献有限。经分析，窗口长度设置不当可能导致时序信息未能充分利用。为此设计窗口大小对比实验，分别测试窗口长度为 6、8、10、12、16、20 时的模型性能，确定最佳时序窗口。同时将单向 LSTM 改为双向 LSTM，使模型能够同时利用过去和未来的时序上下文信息，增强时序特征提取能力。
+
+\subsection{针对类别判断偏向性}
+
+模型在默认阈值 0.5 下对少数类（NLOS）的召回率偏低。通过分析验证集上的 PR 曲线，选择使 F1 分数最大化的阈值作为新的分类决策点，在召回率与精确率之间取得平衡。
+
+\section{模型复杂度分析}
+
+STCA 模型的复杂度分析如下：
+
+\subsection{参数量分析}
+
+模型参数量主要来自以下几个部分：
+
+（1）空间编码器：特征映射矩阵$\bm{W}_1 \in \mathbb{R}^{4 \times 16}$、$\bm{W}_2 \in \mathbb{R}^{16 \times 16}$，注意力权重矩阵$\bm{W}_Q, \bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 16}$，共计约 1,500 个参数。
+
+（2）时序编码器：LSTM 输入矩阵$\bm{W}_t \in \mathbb{R}^{4 \times 16}$，双向 LSTM 的门控矩阵（输入门、遗忘门、输出门、候选记忆）各$\bm{W} \in \mathbb{R}^{(16+16) \times 16}$，共计约 8,000 个参数。
+
+（3）交叉注意力模块：查询投影矩阵$\bm{W}_Q \in \mathbb{R}^{16 \times 16}$，键值投影矩阵$\bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 16}$，共计约 1,000 个参数。
+
+（4）稀疏表示层：投影矩阵$\bm{W}_s \in \mathbb{R}^{32 \times 32}$，共计约 1,000 个参数。
+
+（5）分类器：隐藏层矩阵$\bm{W}_{c1} \in \mathbb{R}^{32 \times 16}$、$\bm{W}_{c2} \in \mathbb{R}^{16 \times 8}$，输出层$\bm{W}_{out} \in \mathbb{R}^{8 \times 1}$，共计约 600 个参数。
+
+模型总参数量约为 12,000 个，属于轻量级深度学习模型，适合在资源受限的边缘设备部署。
+
+\subsection{计算复杂度分析}
+
+设批次大小为$B$，最大卫星数为$N$，窗口大小为$T$，则前向传播的计算复杂度为：
+
+（1）空间编码器：特征映射$O(B \cdot N \cdot 4 \cdot 16)$，自注意力$O(B \cdot N^2 \cdot 16)$，共计$O(B \cdot N^2 \cdot 16)$。
+
+（2）时序编码器：特征映射$O(B \cdot T \cdot 4 \cdot 16)$，双向 LSTM$O(B \cdot T \cdot 16^2)$，共计$O(B \cdot T \cdot 16^2)$。
+
+（3）交叉注意力：$O(B \cdot 16^2)$。
+
+（4）稀疏表示层与分类器：$O(B \cdot 32^2)$。
+
+对于典型配置（$B=16, N=12, T=10$），单次前向传播的浮点运算次数（FLOPs）约为$10^7$量级，在普通 CPU 上推理延迟小于 10ms，满足实时性要求。
+
+\section{算法伪代码}
+
+STCA 模型的前向传播算法如算法~\ref{alg:stca-forward} 所示。
+
+\begin{algorithm}[h]
+\caption{STCA 模型前向传播算法}
+\label{alg:stca-forward}
+\begin{algorithmic}[1]
+\Require 空间输入$\bm{X}_{spatial} \in \mathbb{R}^{B \times N \times 4}$，时序输入$\bm{X}_{temporal} \in \mathbb{R}^{B \times T \times 4}$
+\Ensure NLOS 概率预测$\hat{y} \in [0, 1]^B$
+
+\State \Comment{空间编码}
+\State $\bm{H}_{spatial} \gets \text{ReLU}(\bm{X}_{spatial}\bm{W}_1 + \bm{b}_1)$
+\State $\bm{H}_{spatial}' \gets \text{Dropout}(\text{ReLU}(\bm{H}_{spatial}\bm{W}_2 + \bm{b}_2))$
+\State $\bm{Q}, \bm{K}, \bm{V} \gets \bm{H}_{spatial}'\bm{W}_Q, \bm{H}_{spatial}'\bm{W}_K, \bm{H}_{spatial}'\bm{W}_V$
+\State $\bm{A}_{spatial} \gets \text{softmax}(\bm{Q}\bm{K}^T/\sqrt{16})\bm{V}$
+\State $\bm{c}_{spatial} \gets \frac{1}{N}\sum_{i=1}^{N} \bm{A}_{spatial}^{(i)}$
+
+\State \Comment{时序编码}
+\State $\bm{H}_{temporal} \gets \text{ReLU}(\bm{X}_{temporal}\bm{W}_t + \bm{b}_t)$
+\State $\overrightarrow{\bm{h}}, \overleftarrow{\bm{h}} \gets \text{BiLSTM}(\bm{H}_{temporal})$
+\State $\bm{c}_{temporal} \gets [\overrightarrow{\bm{h}_T}; \overleftarrow{\bm{h}_T}]$
+
+\State \Comment{交叉注意力融合}
+\State $\bm{A}_{cross} \gets \text{softmax}(\bm{c}_{spatial}\bm{c}_{temporal}^T/\sqrt{16})$
+\State $\bm{F}_{fused} \gets \bm{A}_{cross}\bm{c}_{temporal}$
+
+\State \Comment{稀疏表示}
+\State $\bm{Z} \gets \text{ReLU}(\bm{F}_{fused}\bm{W}_s + \bm{b}_s)$
+
+\State \Comment{分类输出}
+\State $\hat{y} \gets \sigma(\bm{Z}\bm{W}_c + \bm{b}_c)$
+
+\Return $\hat{y}$
+\end{algorithmic}
+\end{algorithm}
+
+\section{本章小结}
+
+本章完整阐述了 STCA 模型的算法设计。模型采用时空双通道架构，通过交叉注意力机制实现特征融合，引入稀疏表示层增强判别能力。模型复杂度分析表明，STCA 总参数量约 12,000 个，属于轻量级模型，单次前向传播 FLOPs 约为$10^7$量级，推理延迟小于 10ms。针对中期检查发现的问题，采取了 Dropout、早停、双向 LSTM 等改进措施。

@@ -1,0 +1,96 @@
+% \def\thelstlisting{} % 已在 BUPTthesisbachelor.cls 中定义
+
+%不需要区分奇偶页的请使用下面一行
+\documentclass[a4paper,AutoFakeBold,oneside,12pt]{book}
+%需要区分奇偶页的（即每一章第一页一定在奇数页上）请使用下面一行
+%\documentclass[a4paper,AutoFakeBold,openright,12pt]{book}
+\usepackage{BUPTthesisbachelor}
+\usepackage{setspace}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Begin Documents %%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+% 封面
+\blankmatter
+\includepdf[pages=-]{docs/cover.pdf}
+
+% 任务书
+% \blankmatter
+% \includepdf[pages=-]{docs/task.pdf}
+
+% 成绩评定表
+% \blankmatter
+% \includepdf[pages=-]{docs/scoreTable.pdf}
+
+% 诚信声明
+\blankmatter
+\includepdf[pages=-]{docs/statement.pdf}
+
+\include{abstract}  % Abstract (includes main.cfg internally)
+
+% 目录
+\fancypagestyle{plain}{\pagestyle{frontmatter}}
+\frontmatter
+\tableofcontents % Content
+
+% 正文
+\newpage\mainmatter
+\fancypagestyle{plain}{\pagestyle{mainmatter}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Main Area %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% 第 1 章 引言
+\input{docs/chapters/chapter1}
+
+% 第 2 章 相关理论与技术基础
+\input{docs/chapters/chapter2}
+
+% 第 3 章 需求分析与总体设计
+\input{docs/chapters/chapter3}
+
+% 第 4 章 数据预处理系统设计
+\input{docs/chapters/chapter4}
+
+% 第 5 章 STCA 核心算法设计
+\input{docs/chapters/chapter5}
+
+% 第 6 章 系统实现与训练优化
+\input{docs/chapters/chapter6}
+
+% 第 7 章 实验验证与分析
+\input{docs/chapters/chapter7}
+
+% 第 8 章 总结与展望
+\input{docs/chapters/chapter8}
+
+%%%%%%%%%%%%%%%%%%%%%%% Main Area ENDs Here %%%%%%%%%%%%%%%%%%%%%%%%
+
+% 参考文献
+\clearpage\phantomsection\addcontentsline{toc}{chapter}{参考文献}
+\bibliographystyle{buptbachelor}
+\refbodyfont{\bibliography{docs/ref}}
+
+% 致谢
+\clearpage
+\chapter*{致谢}
+\phantomsection\addcontentsline{toc}{chapter}{致谢}
+\normalsize\thankwords
+
+% % 开题报告
+% \blankmatter
+% \phantomsection\addcontentsline{toc}{chapter}{开题报告}
+% \includepdf[pages=-]{docs/openingReport.pdf}
+
+% % 中期检查表
+% \blankmatter
+% \phantomsection\addcontentsline{toc}{chapter}{中期检查表}
+% \includepdf[pages=-]{docs/interimReport.pdf}
+
+% % 教师指导毕业设计（论文）记录表
+% \blankmatter
+% \phantomsection\addcontentsline{toc}{chapter}{教师指导毕业设计（论文）记录表}
+% \includepdf[pages=-]{docs/guidance.pdf}
+
+\end{document}

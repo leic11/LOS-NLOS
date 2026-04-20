@@ -1,0 +1,94 @@
+\chapter{需求分析与总体设计}
+
+\section{功能需求分析}
+
+本研究需实现以下核心功能：
+
+（1）NLOS/LOS 二分类。接收 GNSS 观测数据，输出视距或非视距的判决结果。
+
+（2）内域泛化验证。在同一测点的数据划分下评估模型性能，检验模型对已知场景的识别能力。
+
+（3）外域泛化验证。采用跨测点划分策略，验证模型在未知场景中的适应能力。
+
+（4）模型训练与保存。支持多 epoch 训练，自动保存验证性能最优的模型权重。
+
+（5）实验结果可视化。生成混淆矩阵、ROC 曲线、PR 曲线、训练历史等图表。
+
+\section{性能指标定义}
+
+采用以下指标评估分类性能：
+
+\begin{itemize}
+\item 准确率（Accuracy）：$(TP+TN)/(TP+TN+FP+FN)$
+\item 精确率（Precision）：$TP/(TP+FP)$
+\item 召回率（Recall）：$TP/(TP+FN)$
+\item F1 分数：$2\times P\times R/(P+R)$
+\item ROC 曲线下面积（ROC-AUC）
+\item PR 曲线下面积（PR-AUC）
+\end{itemize}
+
+其中，TP、TN、FP、FN 分别表示真正例、真负例、假正例、假负例的样本数量。
+
+对于 NLOS 检测任务，召回率（检出率）比精确率更为关键：漏检 NLOS 信号会在定位解算中引入较大误差，而误检 LOS 信号仅减少可用卫星数量。
+
+\section{系统总体架构}
+
+系统由数据预处理、模型训练、评估可视化三部分组成：
+
+（1）数据预处理：CSV 原始数据读取、清洗、时间窗口构建、标准化、NPZ 格式保存。
+
+（2）模型训练：STCA 模型前向传播、反向传播、参数更新、模型保存。
+
+（3）评估可视化：混淆矩阵、ROC/PR 曲线、训练历史绘制。
+
+系统工作流程如下：
+
+\begin{enumerate}
+\item 从 CSV 文件读取原始 GNSS 观测数据
+\item 执行数据清洗与过滤，剔除异常值
+\item 构建时间窗口样本
+\item 进行特征标准化处理
+\item 保存为 NPZ 格式供训练使用
+\item 训练 STCA 模型并保存最佳权重
+\item 在测试集上评估模型性能
+\item 生成可视化结果
+\end{enumerate}
+
+\section{技术选型}
+
+本系统的技术选型如下：
+
+（1）深度学习框架：PyTorch 2.x。PyTorch 具有动态计算图、易于调试、社区活跃等优点，适合快速原型开发与实验迭代。
+
+（2）数据处理库：NumPy。NumPy 提供高效的数组操作与线性代数运算，是 Python 科学计算的基础库。
+
+（3）可视化工具：Matplotlib。Matplotlib 支持多种图表类型，可生成出版级质量的图像，满足论文插图需求。
+
+（4）文档撰写：\LaTeX{}。\LaTeX{} 是学术界广泛使用的排版系统，尤其适合含有大量数学公式的科技文档。
+
+\section{开发环境配置}
+
+开发环境配置如表~\ref{tab:dev-env} 所示。
+
+\begin{table}[h]
+\centering
+\caption{开发环境配置}
+\label{tab:dev-env}
+\begin{tabular}{lc}
+\hline
+组件 & 版本/配置 \\
+\hline
+操作系统 & Windows 11 / Linux \\
+Python & 3.9+ \\
+PyTorch & 2.0+ \\
+CUDA & 11.8 \\
+NumPy & 1.24+ \\
+Matplotlib & 3.7+ \\
+Scikit-learn & 1.2+ \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{本章小结}
+
+本章从系统工程角度定义了 GNSS NLOS 识别系统的功能需求与性能指标。功能需求包括 NLOS/LOS 二分类、内域泛化验证、外域泛化验证、模型训练与保存、实验结果可视化。性能指标采用准确率、精确率、召回率、F1 分数、ROC-AUC、PR-AUC 等分类任务标准指标。系统架构由数据预处理、模型训练、评估可视化三部分组成。技术选型采用 PyTorch 深度学习框架、NumPy 数据处理库、Matplotlib 可视化工具和 LaTeX 文档排版系统。
