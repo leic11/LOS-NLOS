@@ -52,4 +52,16 @@ RANDOM_SEED = 42
 # ============================================================================
 # 设备配置
 # ============================================================================
-DEVICE = "cuda"                # 训练设备："cuda" 使用 GPU, "cpu" 使用 CPU
+# 设备类型："npu:3" 使用昇腾 NPU（设备号 3）, "cuda" 使用 NVIDIA GPU, "cpu" 使用 CPU
+# 注意：使用 NPU 前需要安装 torch_npu: pip install torch-npu
+# 通过 npu-smi info 查看正确的设备号
+
+# 自动检测可用设备
+try:
+    import torch
+    if hasattr(torch, 'npu') and torch.npu.is_available():
+        DEVICE = "npu:3"  # 根据你的环境，NPU 设备号是 3
+    else:
+        DEVICE = "cpu"
+except (ImportError, AttributeError):
+    DEVICE = "cpu"

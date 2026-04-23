@@ -119,7 +119,13 @@ STCA模型是整个项目的核心模型，专门用于GNSS NLOS(非视距信号
     - classifier_dropout: 0.3
 """
 
+# 昇腾 NPU 支持：必须在 import torch 之前导入 torch_npu
 import sys
+try:
+    import torch_npu
+except ImportError:
+    pass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -127,6 +133,15 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import numpy as np
 from pathlib import Path
+
+# NPU 设备初始化
+try:
+    from torch_npu.contrib import transfer_to_npu
+    if hasattr(torch, 'npu') and torch.npu.is_available():
+        torch.npu.set_device(3)  # 根据你的环境，NPU 设备号是 3
+        print(f"NPU 设备已初始化：{torch.npu.get_device_name(3)}")
+except (ImportError, AttributeError):
+    pass
 
 # 添加项目根目录到路径，以便导入 utils 模块
 _current_file = Path(__file__).resolve()
