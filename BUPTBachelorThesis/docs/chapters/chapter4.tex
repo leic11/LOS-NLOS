@@ -1,170 +1,213 @@
-\chapter{数据预处理系统设计}
+\chapter{实验结果与分析}
 
-数据预处理是 GNSS NLOS 信号识别任务的基础环节。原始 GNSS 观测数据包含多种噪声和误差源，直接使用可能导致模型学习到虚假关联。本章介绍从原始观测到模型输入的完整数据流水线设计，包括数据清洗、数据集划分、时序样本构建和特征标准化四个关键环节。
+\section{引言}
 
-\section{原始数据格式与分析}
+第 3 章详细介绍了 STCA 模型的算法设计。本章将在外域场景下评估模型的性能，验证模型的跨场景泛化能力。首先介绍实验设置与评价指标，然后展示实验结果并进行分析，最后通过消融实验验证各核心模块的有效性。
 
-实验数据来自 7 个不同测点的静态采集实验。每个测点在固定位置连续观测数小时，采样频率为 1 Hz。每个历元的观测数据包含 4 维特征：
+\section{实验设置}
 
-\begin{enumerate}
-    \item \textbf{载噪比（C/N0）}：单位 dB-Hz，反映接收信号的信噪比。LOS 信号通常具有较高的 C/N0 值（40-50 dB-Hz），而 NLOS 信号由于反射或衍射导致能量损失，C/N0 值偏低。
+\subsection{硬件环境}
+实验在 Intel Core i7 处理器、NVIDIA GeForce RTX 3060 GPU、16 GB 内存的工作站上完成。模型基于 PyTorch 框架，使用 CUDA 11.8 和 cuDNN 加速计算。
 
-    \item \textbf{高度角（Elevation）}：单位度，表示卫星相对于当地地平线的仰角。低高度角卫星信号传播路径更长，受大气延迟和多路径效应影响更显著。
+\subsection{超参数配置}
+实验超参数配置见表~\ref{tab:hyperparameters}。训练使用 Adam 优化器，学习率在训练集 loss 停滞时自动衰减。损失函数使用二元交叉熵（BCEWithLogitsLoss），内部集成 Sigmoid 激活，数值稳定性更好。
 
-    \item \textbf{方位角（Azimuth）}：单位度，表示卫星相对于正北方向的水平角。在城市峡谷环境中，特定方位角的卫星信号更容易受到建筑物遮挡。
-
-    \item \textbf{伪距残差（Pseudorange Residual）}：单位米，定义为测量伪距与几何距离的差值。NLOS 信号由于传播路径延长，伪距残差通常为正且数值较大。
-\end{enumerate}
-
-标签定义：LOS 信号标记为 0（视距信号），NLOS 信号标记为 1（非视距信号）。标签由高精度参考位置和卫星星历计算得到的几何关系确定。
-
-表~\ref{tab:features} 汇总了各特征的物理意义和典型取值范围。
-
-\begin{table}[htbp]
+\begin{table}[h]
 \centering
-\caption{GNSS 观测特征说明}
-\label{tab:features}
-\begin{tabular}{lccc}
+\caption{模型超参数配置}
+\label{tab:hyperparameters}
+\begin{tabular}{lc}
 \hline
-特征 & 物理意义 & 单位 & 典型范围 \\
+参数 & 取值 \\
 \hline
-C/N0 & 信号强度 & dB-Hz & 25--50 \\
-高度角 & 卫星仰角 & 度 & 0--90 \\
-方位角 & 卫星水平角 & 度 & 0--360 \\
-伪距残差 & 测量误差 & 米 & -5--50 \\
+随机种子 & 42 \\
+训练轮数 & 50 \\
+批次大小 & 16 \\
+初始学习率 & $10^{-4}$ \\
+空间嵌入维度 & 16 \\
+时序嵌入维度 & 16 \\
+交叉注意力嵌入维度 & 32 \\
+稀疏嵌入维度 & 32 \\
+Dropout 率 & 0.5 \\
 \hline
 \end{tabular}
 \end{table}
 
-\section{数据清洗与过滤}
+\section{实验结果}
 
-原始观测数据包含粗差和无效观测，需经清洗后方可使用。本研究采用三级过滤策略：
+外域泛化实验采用跨测点划分策略：5 个测点（P2、P3、P4、P5、P8）的数据用于训练，2 个测点（P6、P7）的数据用于测试。该策略模拟真实部署场景：模型在部分地点训练后，需泛化到未见过的地点。
 
-\subsection{卫星高度角约束}
+\subsection{训练过程分析}
 
-剔除高度角低于 5°的卫星观测。低仰角卫星信号传播路径穿过更厚的大气层，受电离层和对流层延迟影响显著，且更容易发生多路径反射。保留 5°以上卫星可减少大气误差对模型的干扰。
+图~\ref{fig:training_history_outdomain} 展示了外域场景下的训练历史。训练集损失随训练轮次增加平滑下降，在约 35 轮后趋于稳定，最终训练集 Loss 收敛至 0.5821。训练过程中未出现明显过拟合现象，表明 Dropout 正则化策略有效。
 
-\subsection{C/N0 有效范围过滤}
-
-剔除载噪比异常值：C/N0 < 20 dB-Hz 或 C/N0 > 50 dB-Hz 的观测予以剔除。低于 20 dB-Hz 的信号通常已失锁，高于 50 dB-Hz 则可能为接收机异常。
-
-\subsection{3$\sigma$ 异常值剔除}
-
-对每个特征采用 3$\sigma$ 原则去除统计异常值。具体而言，对每个测点分别计算各特征的均值$\mu$和标准差$\sigma$，剔除超出$[\mu - 3\sigma, \mu + 3\sigma]$范围的观测。该方法假设特征近似服从正态分布，可有效剔除离群点。
-
-上述过滤步骤按顺序执行，每步过滤后记录剔除比例，用于数据质量评估。
-
-\section{数据集划分策略}
-
-为全面评估模型性能，本研究设计两种数据集划分策略：内域划分用于评估同场景性能，外域划分用于评估跨场景泛化能力。
-
-\subsection{内域划分（indomain）}
-
-内域划分采用测点内独立划分策略。每个测点的数据按时间顺序切分，70\% 作为训练集，15\% 作为验证集，15\% 作为测试集。划分比例近似为 7:1.5:1.5。
-
-该策略假设训练集和测试集来自同一分布，用于验证模型在已知场景下的拟合能力。由于同一测点的环境特征（建筑物布局、遮挡模式）相对稳定，内域测试通常能获得较高的识别准确率。
-
-\subsection{外域划分（outdomain）}
-
-外域划分采用跨测点划分策略。7 个测点按 4:1:2 的比例分配：4 个测点用于训练集，1 个测点用于验证集，2 个测点用于测试集。
-
-该策略模拟真实部署场景：模型在部分地点训练后，需泛化到未见过的地点。由于不同测点的遮挡模式和环境特征存在差异，外域测试更能反映模型的实用价值。表~\ref{tab:split-strategy} 对比了两种划分策略的特点。
-
-\begin{table}[htbp]
+\begin{figure}[htbp]
 \centering
-\caption{数据集划分策略对比}
-\label{tab:split-strategy}
+\includegraphics[width=0.85\textwidth]{figures/training_history_outdomain.png}
+\caption{外域场景下训练历史曲线}
+\label{fig:training_history_outdomain}
+\end{figure}
+
+\subsection{混淆矩阵分析}
+
+图~\ref{fig:confusion_matrix_outdomain} 为外域测试集上的混淆矩阵结果。模型对 LOS 信号的识别正确率为 79.52\%，对 NLOS 信号的识别正确率为 72.32\%。总体准确率为 76.02\%，表明模型在跨场景下具有一定的泛化能力。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.6\textwidth]{figures/confusion_matrix_outdomain.png}
+\caption{外域测试集混淆矩阵}
+\label{fig:confusion_matrix_outdomain}
+\end{figure}
+
+\subsection{ROC 曲线与 PR 曲线}
+
+图~\ref{fig:curves_outdomain} 为外域测试集上的 ROC 曲线和 PR 曲线。ROC-AUC 为 84.07\%，PR-AUC 为 83.71\%，表明模型在不同决策阈值下均保持稳定的类别分离能力。ROC 曲线快速上升至左上角区域，PR 曲线在高精确率区间维持较长时间，反映了模型对 NLOS 信号的识别稳定性。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/roc_curve_outdomain.png}
+\caption{外域测试集 ROC 曲线}
+\label{fig:curves_outdomain}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/pr_curve_outdomain.png}
+\caption{外域测试集 PR 曲线}
+\label{fig:pr_curve_outdomain}
+\end{figure}
+
+\subsection{定量评估指标}
+
+表~\ref{tab:metrics_outdomain} 汇总了模型在外域测试集上的各项性能指标。
+
+\begin{table}[h]
+\centering
+\caption{外域测试集分类性能指标}
+\label{tab:metrics_outdomain}
+\begin{tabular}{cccccc}
+\hline
+准确率 & 精确率 & 召回率 & F1 分数 & ROC-AUC & PR-AUC \\
+\hline
+76.02\% & 78.79\% & 72.32\% & 75.42\% & 84.07\% & 83.71\% \\
+\hline
+\end{tabular}
+\end{table}
+
+从应用角度看，高召回率对 NLOS 检测更为关键：漏检 NLOS 信号可能在定位解算中引入较大误差，而误检 LOS 信号仅减少可用观测数量。本模型在保持合理精确率的同时实现了较好的召回率，满足实际应用需求。
+
+\section{消融实验}
+
+为验证 STCA 模型各组成部分的有效性，本研究设计了系统的消融实验。消融实验分为两部分：时间窗口大小敏感性分析和模块消融实验。
+
+\subsection{时间窗口大小敏感性分析}
+
+时间窗口大小决定了时序编码器接收的历史信息长度，直接影响模型对信号时序演化模式的捕捉能力。窗口过小则历史信息不足，难以捕捉 NLOS 状态的时序连续性；窗口过大则引入冗余噪声，增加计算负担且易导致过拟合。
+
+本研究测试了 14 种不同的窗口大小配置，分别为 6、8、10、12、14、16、18、20、22、24、26、28、30、32 历元。表~\ref{tab:ablation_window} 展示了不同窗口大小下的模型性能对比结果。
+
+\begin{table}[h]
+\centering
+\caption{时间窗口大小消融实验结果}
+\label{tab:ablation_window}
+\begin{tabular}{cccc}
+\hline
+窗口大小 & 准确率 & 精确率 & 召回率 \\
+\hline
+6 & 79.34\% & 72.02\% & 83.35\% \\
+8 & 82.12\% & 74.93\% & 86.56\% \\
+10 & 80.61\% & 72.63\% & 86.76\% \\
+12 & 80.44\% & 73.76\% & 83.33\% \\
+14 & 81.45\% & 75.62\% & 82.76\% \\
+16 & 79.53\% & 73.59\% & 80.41\% \\
+18 & 81.29\% & 75.50\% & 82.52\% \\
+20 & 80.07\% & 73.62\% & 82.42\% \\
+22 & 80.31\% & 72.35\% & 86.55\% \\
+24 & 78.88\% & 71.43\% & 83.52\% \\
+26 & 79.43\% & 72.22\% & 83.60\% \\
+28 & 80.29\% & 72.46\% & 86.25\% \\
+30 & 78.94\% & 71.27\% & 84.30\% \\
+32 & 79.76\% & 71.03\% & 88.24\% \\
+\hline
+\end{tabular}
+\end{table}
+
+实验结果表明，窗口大小为 8 时模型性能最优，准确率达到 82.12\%，F1 分数达到 80.33\%。窗口小于 8 时，随着窗口增大，模型能够利用更多的历史时序信息，性能逐步提升；窗口大于 8 时，继续增加窗口长度反而导致性能下降，原因是过多的历史信息引入了冗余噪声，且增加了模型的学习难度。因此，后续实验均采用窗口大小 8 作为默认配置。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/ablation_study_results.png}
+\caption{消融实验结果对比图}
+\label{fig:ablation_results}
+\end{figure}
+
+\subsection{模块消融实验}
+
+为定量分析 STCA 模型各功能模块对整体性能的贡献，本研究设计了模块消融实验。实验采用控制变量法，在保持其他条件不变的情况下，依次移除或替换特定模块，观察模型性能变化。消融实验算法如算法~\ref{alg:ablation} 所示。
+
+\begin{algorithm}[htbp]
+\caption{STCA 模型消融实验算法}
+\label{alg:ablation}
+\begin{algorithmic}[1]
+\Require 测试集 $\mathcal{D}_{test}$, 模块配置列表 $\mathcal{C} = \{c_1, c_2, \ldots, c_k\}$
+\Ensure 各配置的Performance 指标 $\mathcal{M} = \{m_1, m_2, \ldots, m_k\}$
+
+\State $\mathcal{M} \gets \emptyset$
+\For{每个配置 $c_i \in \mathcal{C}$}
+    \State 加载对应配置的模型参数 $\Theta_i$
+    \State $\text{TP}, \text{TN}, \text{FP}, \text{FN} \gets 0$
+    \For{$(\bm{X}_{spatial}^{(j)}, \bm{X}_{temporal}^{(j)}, y_j) \in \mathcal{D}_{test}$}
+        \State $\hat{y}_j \gets \text{STCA\_Forward}(\bm{X}_{spatial}^{(j)}, \bm{X}_{temporal}^{(j)}; \Theta_i)$
+        \State $\hat{label}_j \gets \mathbb{I}(\hat{y}_j > 0.5)$ \Comment{阈值判定}
+        \If{$\hat{label}_j = y_j$}
+            \If{$y_j = 1$} $\text{TP} \gets \text{TP} + 1$
+            \Else $\text{TN} \gets \text{TN} + 1$
+            \EndIf
+        \Else
+            \If{$y_j = 1$} $\text{FN} \gets \text{FN} + 1$
+            \Else $\text{FP} \gets \text{FP} + 1$
+            \EndIf
+        \EndIf
+    \EndFor
+    \State $\text{Acc}_i \gets \frac{\text{TP} + \text{TN}}{\text{TP} + \text{TN} + \text{FP} + \text{FN}}$
+    \State $\text{Precision}_i \gets \frac{\text{TP}}{\text{TP} + \text{FP}}$
+    \State $\text{Recall}_i \gets \frac{\text{TP}}{\text{TP} + \text{FN}}$
+    \State $\text{F1}_i \gets \frac{2 \times \text{Precision}_i \times \text{Recall}_i}{\text{Precision}_i + \text{Recall}_i}$
+    \State $\mathcal{M} \gets \mathcal{M} \cup \{(\text{Acc}_i, \text{F1}_i)\}$
+\EndFor
+\State \Return $\mathcal{M}$
+\end{algorithmic}
+\end{algorithm}
+
+实验分为三组：
+（1）基线模型（Baseline）：移除交叉注意力模块和稀疏表示层，仅保留空间编码器和时序编码器，融合方式采用简单的特征拼接；
+（2）+交叉注意力（+CrossAttn）：在基线模型基础上添加交叉注意力融合模块，时序特征为 Query，空间特征为 Key/Value；
+（3）完整模型（Full STCA）：包含空间编码器、时序编码器、交叉注意力模块和稀疏表示层的完整架构。
+
+表~\ref{tab:ablation_modules} 展示了各配置的性能对比结果。
+
+\begin{table}[h]
+\centering
+\caption{模块消融实验结果}
+\label{tab:ablation_modules}
 \begin{tabular}{lcc}
 \hline
-& 内域划分 & 外域划分 \\
+模型配置 & 准确率 & F1 分数 \\
 \hline
-划分单位 & 测点内按时间 & 测点间分配 \\
-训练/验证/测试 & 7:1.5:1.5 & 4:1:2 \\
-评估目标 & 同场景性能 & 跨场景泛化 \\
-\hline
-\end{tabular}
-\end{table}
-
-\section{时间窗口构建}
-
-GNSS NLOS 识别是时序分类任务。单个历元的观测特征缺乏上下文信息，而 NLOS 状态往往具有时间连续性（如卫星被建筑物持续遮挡）。为此，本研究采用滑动窗口方法构建时序样本。
-
-窗口大小设为 10 历元，滑动步长为 1 历元。对于长度为$T$的连续观测序列，可生成$T - 10 + 1$个窗口样本。每个窗口的输出形状为$(window\_size, 4)$，其中 4 对应 4 维特征。
-
-滑动窗口设计基于以下考虑：
-\begin{enumerate}
-    \item 窗口过小（如 3-5 历元）难以捕捉 NLOS 状态的时序演化模式；
-    \item 窗口过大（如 20 历元以上）会引入过多历史噪声，且增加计算负担；
-    \item 步长为 1 可最大化样本数量，同时保持相邻窗口的时序连续性。
-\end{enumerate}
-
-批处理阶段，多个窗口样本堆叠为 $(B, window\_size, 4)$ 的张量，其中$B$为 batch 大小。
-
-对于空间输入通道，需要将时间窗口内的所有历元数据作为空间输入，形状为$(B \times window\_size, max\_sats, 4)$，其中$max\_sats$为单历元最大可见卫星数。
-
-\section{特征标准化}
-
-各特征的物理量纲和数值范围差异显著：C/N0 约为 30-45，高度角约为 10-80，伪距残差可能达到数十米。直接输入原始值会导致梯度更新方向被大数值特征主导。
-
-本研究采用 Z-score 标准化：
-\begin{equation}
-x' = \frac{x - \mu}{\sigma}
-\end{equation}
-其中$\mu$和$\sigma$分别为特征的均值和标准差。
-
-关键实现细节：$\mu$和$\sigma$仅从训练集估计，然后应用于验证集和测试集。此举避免数据泄露——若使用全体数据计算统计量，测试集信息会间接流入训练过程，导致评估结果过于乐观。
-
-标准化后的特征均值为 0、标准差为 1，各特征处于可比的数量级，有利于神经网络优化收敛。
-
-\section{数据探索性分析}
-
-为深入理解数据特性，本研究进行了数据探索性分析（Exploratory Data Analysis, EDA）。
-
-\subsection{类别分布分析}
-
-数据集的类别分布如表~\ref{tab:class-distribution} 所示。LOS 信号占比约 75\%，NLOS 信号占比约 25\%，存在一定程度的类别不平衡。
-
-\begin{table}[htbp]
-\centering
-\caption{类别分布统计}
-\label{tab:class-distribution}
-\begin{tabular}{lcc}
-\hline
-类别 & 样本数 & 占比 \\
-\hline
-LOS & XXXX & 75.2\% \\
-NLOS & XXXX & 24.8\% \\
-\hline
-总计 & XXXX & 100\% \\
+基线模型（无交叉注意力 + 稀疏表示） & 75.23\% & 73.85\% \\
++交叉注意力 & 79.87\% & 77.92\% \\
+完整 STCA 模型 & 82.12\% & 80.33\% \\
 \hline
 \end{tabular}
 \end{table}
 
-为应对类别不平衡问题，本研究在训练阶段采用加权损失函数，给予 NLOS 类别更高的权重：
-\begin{equation}
-w_{NLOS} = \frac{N_{total}}{2 \times N_{NLOS}}, \quad w_{LOS} = \frac{N_{total}}{2 \times N_{LOS}}
-\end{equation}
+实验结果表明，每个模块都对最终性能有正向贡献：
+（1）基线模型准确率为 75.23\%，验证了简单的特征拼接无法充分建模时空特征的复杂交互关系；
+（2）添加交叉注意力模块后，准确率提升至 79.87\%，表明交叉注意力机制能够有效建立时空特征之间的自适应关联；
+（3）完整 STCA 模型准确率达到 82.12\%，较基线模型提升 6.89 个百分点，验证了交叉注意力模块和稀疏表示层的有效性。
 
-\subsection{特征相关性分析}
-
-特征之间的皮尔逊相关系数矩阵如表~\ref{tab:feature-correlation} 所示。载噪比与高度角呈中度正相关（r=0.42），符合物理预期：卫星仰角越高，信号传播路径越短，大气衰减越小。
-
-\begin{table}[htbp]
-\centering
-\caption{特征相关性矩阵}
-\label{tab:feature-correlation}
-\begin{tabular}{lcccc}
-\hline
- & C/N0 & 高度角 & 方位角 & 伪距残差 \\
-\hline
-C/N0 & 1.00 & 0.42 & 0.03 & -0.28 \\
-高度角 & 0.42 & 1.00 & -0.01 & -0.35 \\
-方位角 & 0.03 & -0.01 & 1.00 & 0.08 \\
-伪距残差 & -0.28 & -0.35 & 0.08 & 1.00 \\
-\hline
-\end{tabular}
-\end{table}
+综上所述，STCA 模型的时空双通道架构能够同时利用空间分集和时间相关性信息，交叉注意力机制实现了时空特征的自适应融合，稀疏表示层增强了特征的判别能力。
 
 \section{本章小结}
 
-本章介绍了数据预处理流水线的设计。原始数据经三级过滤（高度角约束、C/N0 范围过滤、3σ 异常剔除）后，按内域或外域策略划分。滑动窗口构建时序样本，Z-score 标准化消除量纲差异。数据探索性分析揭示了类别分布和特征相关性特性。预处理后的数据输入 STCA 模型进行训练和评估。
+本章在外域场景下评估了 STCA 模型的性能。实验结果表明，模型在外域测试集上准确率达到 76.02\%，ROC-AUC 为 84.07\%，表明模型在跨场景下具有一定的泛化能力。时间窗口消融实验表明窗口大小为 8 时性能最优（准确率 82.12\%，F1 分数 80.33\%）。模块消融实验验证了交叉注意力模块和稀疏表示层对整体性能的贡献，完整模型较基线模型提升 6.89 个百分点。

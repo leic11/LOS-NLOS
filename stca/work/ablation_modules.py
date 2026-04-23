@@ -1,6 +1,6 @@
 # ablation_modules.py
 """
-消融实验 2：核心模块验证实验（9 特征）
+消融实验 2：核心模块验证实验（4 特征）
 ============================
 
 用途：
@@ -13,7 +13,7 @@
     2. +CrossAttn: 有交叉注意力、无稀疏正则化
     3. +Both: 有交叉注意力、有稀疏正则化
 
-    使用 9 特征输入（4 原始 +5 衍生）
+    使用 4 特征输入（4 个原始特征）
     数据划分模式使用 constants.py 中的 DEFAULT_SPLIT_MODE 设置
 
 输出：
@@ -151,9 +151,9 @@ def train_model(split_mode, module_key, module_config):
         CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
     )
 
-    # 构建模型（带模块控制参数，使用 9 特征输入）
+    # 构建模型（带模块控制参数，使用 4 特征输入）
     model = STCAModel(
-        input_dim=9,  # 9 特征
+        input_dim=4,  # 4 特征
         num_classes=2,
         spatial_embed_dim=SPATIAL_EMBED_DIM,
         spatial_num_heads=SPATIAL_NUM_HEADS,

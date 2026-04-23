@@ -1,73 +1,57 @@
-# GNSS NLOS Detection using Spatiotemporal Cross-Attention (STCA)
+# GNSS NLOS 信号检测 - 时空交叉注意力 (STCA) 模型
 
-本项目实现了一个基于 PyTorch 的时空交叉注意力（STCA）模型，用于 GNSS NLOS（非视距）信号检测。该模型基于论文：
-
-> Zeng, et al. "A Spatiotemporal Information-Driven Cross-Attention Model With Sparse Representation for GNSS NLOS Signal Detection" (2024)
+本项目实现了一个基于 PyTorch 的时空交叉注意力（STCA）模型，用于 GNSS NLOS（非视距）信号检测。模型参考 Zeng 等人 (2024) 提出的架构，在静态数据集上达到 99% 以上准确率。
 
 ## ✨ 项目特点
 
-- 🧠 **深度学习模型**：采用时空交叉注意力机制，结合稀疏表示进行 NLOS 检测
-- 📊 **完整实验流程**：支持数据预处理、模型训练、评估和结果可视化
-- 🎯 **高精度**：在静态数据集上达到 99%+ 准确率
-- 🔄 **模型对比**：支持多种基线模型和消融实验
-- 📜 **历史记录**：自动保存所有实验结果到 JSON 文件
+- **双输入架构**：空间输入捕获多星联合分布特征，时序输入建模信号动态变化
+- **交叉注意力融合**：以时序特征为查询、空间特征为键值，建立自适应关联
+- **稀疏表示增强**：通过可学习激活函数提升特征判别性
+- **完整实验流程**：支持数据预处理、模型训练、评估可视化和消融实验
+- **域外泛化验证**：支持按地点划分数据，验证模型跨场景泛化能力
 
 ## 📁 项目结构
 
 ```
 DevLab/
 ├── README.md                      # 项目说明文档
-├── CLAUDE.md                      # Claude Code 配置指南
+├── CLAUDE.md                      # 配置指南
 ├── requirements.txt               # Python 依赖
 │
-├── data for sharing_csv/          # 原始 GNSS 静态数据
-│   └── P2.csv ~ P8.csv            # 7 个测站原始观测数据
+├── data for sharing_csv/          # 原始 GNSS 静态数据 (P2.csv ~ P8.csv)
 │
-├── stca/                          # 核心代码目录
+├── stca/                          # 核心代码
 │   ├── modules/                   # 模型模块
-│   │   ├── constants.py           # 模型超参数配置
+│   │   ├── constants.py           # 模型超参数
 │   │   ├── stca_model.py          # STCA 完整模型（支持消融实验配置）
-│   │   ├── spatial_encoder.py     # 空间编码器 (AAM)
-│   │   ├── temporal_encoder.py    # 时序编码器 (LSTM-TFE)
+│   │   ├── spatial_encoder.py     # 空间编码器 (AAM Module)
+│   │   ├── temporal_encoder.py    # 时序编码器 (LSTM-TFE Module)
 │   │   ├── cross_attention.py     # 交叉注意力模块
 │   │   └── sparse_representation.py # 稀疏表示模块
-│   ├── data_loading/              # 数据预处理模块
-│   │   ├── main.py                # 主预处理器 (StaticPreprocessor)
-│   │   ├── constants.py           # 数据预处理参数
-│   │   ├── loaders.py             # CSV 数据加载器
+│   ├── data_loading/              # 数据预处理
+│   │   ├── main.py                # 预处理器 (StaticPreprocessor)
+│   │   ├── constants.py           # 预处理参数
+│   │   ├── loaders.py             # CSV 加载器
 │   │   ├── filters.py             # 数据过滤
 │   │   ├── splitters.py           # 数据集划分 (Indomain/Outdomain)
 │   │   ├── windowers.py           # 时间窗口生成
-│   │   └── normalizers.py         # 特征标准化
+│   │   └── normalizers.py         # 特征归一化
 │   ├── work/                      # 实验脚本
-│   │   ├── train_static.py        # 训练脚本
-│   │   ├── eval_static.py         # 评估脚本
-│   │   ├── ablation_window_size.py    # 窗口大小消融实验
-│   │   ├── ablation_modules.py        # 模块消融实验 (Concat/CrossAttn/Both)
-│   │   └── ablation_feature_comparison.py  # 特征对比实验 (4 特征 vs 9 特征)
+│   │   ├── train_static.py        # 训练与评估（无验证集模式）
+│   │   ├── ablation_window_size.py    # 窗口长度消融 (6~32)
+│   │   ├── ablation_modules.py        # 模块消融 (Baseline/CrossAttn/Both)
+│   │   ├── ablation_hyperparam.py     # 超参数敏感性分析
+│   │   └── ablation_baseline.py       # 基线对比实验
 │   └── utils/                     # 工具模块
-│       ├── plot_training_history.py   # 重绘训练历史
-│       └── replot_confusion_matrix.py # 重绘混淆矩阵
-│
-├── basemodel/                     # 基础模型框架（衍生特征工程）
-│   ├── config.py                  # 配置管理
-│   ├── data.py                    # 数据加载
-│   ├── model.py                   # 模型定义
-│   ├── train.py                   # 训练循环
-│   └── plotting.py                # 可视化
 │
 ├── utils/                         # 通用工具
 │   ├── logger_config.py           # 日志配置
-│   ├── seed_utils.py              # 随机种子设置
-│   └── plot_distribution.py       # 数据分布可视化
+│   └── seed_utils.py              # 随机种子设置
 │
-└── outputs/                       # 实验输出
-    └── stca/
-        ├── ablation/
-        │   ├── window_size/       # 窗口大小消融结果
-        │   ├── modules/           # 模块消融结果
-        │   └── feature/           # 特征对比结果
-        └── models/                # 保存的模型权重
+└── outputs/stca/                  # 实验输出
+    ├── ablation/                  # 消融实验结果
+    ├── figures/                   # 训练曲线与评估图
+    └── final_model_*.pth          # 模型权重
 ```
 
 ## 🚀 快速开始
@@ -83,44 +67,34 @@ pip install -r requirements.txt
 ```bash
 cd stca
 
-# 生成 STCA 格式数据（默认 indomain 划分，窗口大小=8）
+# 生成 STCA 格式数据（默认 outdomain 划分，窗口大小=8）
 python -m data_loading.main --generate-stca
 
-# 生成 Outdomain 划分数据
-python -m data_loading.main --split-mode outdomain --generate-stca
+# 生成 indomain 划分数据
+python -m data_loading.main --split-mode indomain --generate-stca
 ```
 
 ### 3. 训练模型
 
 ```bash
-# 使用 indomain 数据训练
+# 使用 outdomain 数据训练（默认）
 python -m work.train_static
 
-# 使用 outdomain 数据训练
-python -m work.train_static --split-mode outdomain
+# 使用 indomain 数据训练
+python -m work.train_static --split-mode indomain
 ```
 
-### 4. 评估模型
+### 4. 消融实验
 
 ```bash
-# 评估 indomain 模型
-python -m work.eval_static
-
-# 评估 outdomain 模型
-python -m work.eval_static --split-mode outdomain
-```
-
-### 5. 消融实验
-
-```bash
-# 窗口大小消融实验（6, 8, 10, ..., 32）
+# 窗口长度消融（6, 8, 10, ..., 32）
 python -m work.ablation_window_size
 
-# 模块消融实验（Baseline/+CrossAttn/+Both）
+# 模块消融（Baseline/CrossAttn/Both）
 python -m work.ablation_modules
 
-# 特征对比实验（4 特征 vs 9 特征）
-python -m work.ablation_feature_comparison
+# 超参数敏感性分析
+python -m work.ablation_hyperparam
 ```
 
 ## 📊 数据说明
@@ -163,15 +137,6 @@ python -m work.ablation_feature_comparison
 | Azimuth | 方位角 (°) |
 | Pseudorange_residual | 伪距残差 (m) |
 
-**5 个衍生特征**（扩展至 9 特征）：
-| 特征 | 说明 |
-|------|------|
-| Delta_CNR | CNR 一阶差分 |
-| CNR_std | CNR 滑动标准差 |
-| PrRes_std | 伪距残差标准差 |
-| Delta_Elevation | 高度角变化率 |
-| Delta_Azimuth | 方位角变化率 |
-
 ### 标签
 
 - `0` → NLOS (非视距信号)
@@ -181,7 +146,7 @@ python -m work.ablation_feature_comparison
 
 ```
 输入 → Spatial Encoder → Temporal Encoder → Cross-Attention → Sparse Rep → Classifier
-       (AAM 模块)        (LSTM-TFE 模块)      (时空融合)        (L1 正则)    (MLP+Sigmoid)
+       (AAM 模块)        (LSTM-TFE 模块)      (时空融合)        (ReLU)     (MLP+Sigmoid)
 ```
 
 ### 模型配置参数
@@ -193,12 +158,14 @@ python -m work.ablation_feature_comparison
 | SPATIAL_EMBED_DIM | 空间嵌入维度 | 16 |
 | SPATIAL_NUM_HEADS | 注意力头数 | 4 |
 | SPATIAL_NUM_LAYERS | 编码器层数 | 2 |
+| SPATIAL_D_FF | 前馈网络维度 | 32 |
 | SPATIAL_DROPOUT | 空间编码器 Dropout | 0.5 |
 | TEMPORAL_EMBED_DIM | 时间嵌入维度 | 16 |
 | TEMPORAL_NUM_LAYERS | LSTM 层数 | 2 |
 | TEMPORAL_DROPOUT | 时间编码器 Dropout | 0.5 |
-| CROSS_ATTN_EMBED_DIM | 交叉注意力维度 | 16 |
+| CROSS_ATTN_EMBED_DIM | 交叉注意力维度 | 32 |
 | CROSS_ATTN_NUM_HEADS | 交叉注意力头数 | 1 |
+| SPARSE_EMBED_DIM | 稀疏嵌入维度 | 32 |
 | CLASSIFIER_HIDDEN_DIMS | 分类器隐藏层 | [16, 8] |
 | BATCH_SIZE | 批大小 | 16 |
 | EPOCHS | 训练轮数 | 50 |
@@ -206,11 +173,11 @@ python -m work.ablation_feature_comparison
 
 ## 📈 消融实验配置
 
-### 1. 窗口大小消融 (`ablation_window_size.py`)
+### 1. 窗口长度消融 (`ablation_window_size.py`)
 
 测试不同时间窗口长度对模型性能的影响：
 - 窗口范围：6, 8, 10, ..., 32
-- 使用 9 特征输入
+- 使用 4 特征输入
 - 输出：性能折线图和 JSON 结果
 
 ### 2. 模块消融 (`ablation_modules.py`)
@@ -219,50 +186,42 @@ python -m work.ablation_feature_comparison
 
 | 配置 | use_cross_attention | use_sparse_representation | 说明 |
 |------|---------------------|---------------------------|------|
-| **Baseline (Concat)** | `False` | `False` | 空间 + 时间特征直接拼接 |
+| **Baseline** | `False` | `False` | 空间 + 时间特征直接拼接 |
 | **+CrossAttn** | `True` | `False` | 添加交叉注意力融合 |
-| **+Both (Proposed)** | `True` | `True` | 完整模型（交叉注意力 + 稀疏表示） |
+| **+Both** | `True` | `True` | 完整模型（交叉注意力 + 稀疏表示） |
 
-**Baseline (Concat) 实现细节**：
-```python
-# 空间特征聚合：对 num_sats 维度取平均池化
-spatial_pooled = spatial_emb.mean(dim=1)  # (batch, 64)
+### 3. 超参数敏感性分析 (`ablation_hyperparam.py`)
 
-# Concat 拼接：[hₜ, hₛ] -> (batch, 128)
-fused_features = torch.cat([temporal_emb, spatial_pooled], dim=-1)
-
-# 直接送分类器
-output = classifier(fused_features)
-```
-
-### 3. 特征对比 (`ablation_feature_comparison.py`)
-
-对比 4 特征（原始）vs 9 特征（扩展）的性能差异。
+探究 8 个超参数对性能的影响：
+- 空间/时间嵌入维度、层数、注意力头数
+- Dropout 率、稀疏嵌入维度、分类器隐藏层
+- 控制变量法：每次改变一个超参数，其他保持基准值
 
 ## 📁 数据预处理流程
 
 ```
-原始 CSV → 加载合并 → 过滤 → 衍生特征 → 窗口化 → 数据集划分 → 归一化 → .npz
+原始 CSV → 加载合并 → 过滤 → 窗口化 → 数据集划分 → 归一化 → .npz
 ```
 
 1. **加载合并**: 将所有测站 CSV 合并为一个 DataFrame，添加 `location` 列
-2. **过滤**: 删除含 NaN 的行和无效数据
-3. **衍生特征**: 添加 Delta_CNR、CNR_std 等 5 个衍生特征
-4. **窗口化**: 生成时空双通道输入
-5. **数据集划分**: Indomain 或 Outdomain
-6. **归一化**: 仅在训练集上拟合 scaler
+2. **过滤**: 删除含 NaN 的行和无效数据（伪距残差 > 100m）
+3. **窗口化**: 生成时空双通道输入
+4. **数据集划分**:
+   - Indomain：每个地点内随机划分 70% 训练 / 30% 测试
+   - Outdomain：P2-P5、P8 训练，P6-P7 测试
+5. **归一化**: 仅在训练集上拟合 scaler
 
 ### 时空双通道输入
 
-**时间通道** `(N, window_size, 9)`：
+**时间通道** `(N, window_size, features)`：
 - 单颗卫星连续 window_size 个历元的观测历史
 
-**空间通道** `(N, max_satellites, 9)`：
+**空间通道** `(N, max_satellites, features)`：
 - 同一时刻所有可见卫星的分布
 
 **对齐方式**：
 ```
-时间通道样本 i: [t-9, t-8, ..., t] 时刻的 PRN=X 观测
+时间通道样本 i: [t-w+1, ..., t] 时刻的 PRN=X 观测
 空间通道样本 i: t 时刻所有卫星的观测
 标签 i:        t 时刻 PRN=X 的 LOS/NLOS 标志
 ```

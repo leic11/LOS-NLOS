@@ -1,10 +1,10 @@
 # train_static.py
 """
-静态数据集训练脚本 - PyTorch Version
+静态数据集训练与评估脚本 - PyTorch Version
 ==================
 
 用途：
-    整合数据加载、模型构建、训练执行、结果保存的端到端训练入口，
+    整合数据加载、模型构建、训练执行、测试评估、结果保存的端到端入口，
     适用于静态点 GNSS NLOS 信号的二分类任务。
 
 主要功能：
@@ -13,15 +13,16 @@
     3. 数据加载：优先加载已处理的 .npz 文件，否则触发预处理流程
     4. 模型构建：根据配置实例化 STCAModel，支持可选的时序编码器和交叉注意力模块
     5. 训练执行：调用 STCAModel.fit() 方法执行训练
-    6. 结果可视化：绘制并保存训练损失曲线、准确率曲线、F1 分数曲线
-    7. 快速评估：在测试集上输出损失、准确率和 F1 分数
+    6. 训练结果可视化：绘制并保存训练损失曲线、准确率曲线、F1 分数曲线
+    7. 测试集评估：准确率、精确率、召回率、F1、ROC AUC、PR AUC
+    8. 评估可视化：混淆矩阵、ROC 曲线、PR 曲线
 
 使用方式：
     修改 stca/data_loading/constants.py 中的 DEFAULT_SPLIT_MODE：
     - "indomain": 域内划分（按样本比例划分）
     - "outdomain": 域外划分（按地点划分）
 
-    # 训练模型
+    # 训练并测试模型
     python -m work.train_static
 
 输入：
@@ -31,19 +32,22 @@
 
 输出：
     - static_processed_indomain.npz：预处理后的数据集（如不存在）
-    - outputs/static_experiment/
-        ├── best_model.pth           # 最优模型权重
-        ├── final_model.pth          # 完整模型
+    - outputs/stca/
+        ├── final_model_{split_mode}.pth    # 完整模型权重
         ├── figures/
-        │   ├── training_loss.png    # 损失曲线
-        │   ├── training_accuracy.png # 准确率曲线
-        │   └── training_history.png # 组合曲线
-        └── metrics.json             # 评估指标
+        │   ├── training_loss_{split_mode}.png
+        │   ├── training_accuracy_{split_mode}.png
+        │   ├── training_f1_{split_mode}.png
+        │   ├── confusion_matrix_{split_mode}_{timestamp}.png
+        │   ├── roc_curve_{split_mode}_{timestamp}.png
+        │   └── pr_curve_{split_mode}_{timestamp}.png
+        └── metrics.json             # 训练和测试指标
 """
 
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # 添加项目根目录到 Python 路径，以便导入 utils
 ROOT_DIR = Path(__file__).parent.parent.parent
@@ -68,6 +72,12 @@ import matplotlib
 import numpy as np
 import torch
 matplotlib.use('Agg')
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, roc_curve, auc, classification_report,
+    precision_recall_curve, average_precision_score
+)
+import seaborn as sns
 
 # 使用统一日志配置
 logger = setup_logger(__name__)
@@ -81,9 +91,9 @@ def load_data(config):
     - X_train_temporal: 时间序列输入 (samples, window_size, features)，用于 LSTM 模块
 
     Returns:
-        (X_train_spatial, X_train_temporal), (X_val_spatial, X_val_temporal), (X_test_spatial, X_test_temporal),
-        y_train, y_val, y_test
+        (X_train_spatial, X_train_temporal), (X_test_spatial, X_test_temporal), y_train, y_test
     """
+    # 使用 stca 目录保存 .npz 文件
     script_dir = Path(__file__).parent.parent
 
     window_size = config.get("window_size", 10)
@@ -105,38 +115,33 @@ def load_data(config):
         logger.info(f"Loading preprocessed data from {npz_path}")
         data = StaticPreprocessor.load_processed(str(npz_path))
 
-        # 检查是否有新的 STCA 格式数据 (X_train_spatial + X_train_temporal)
+        # 检查是否有 STCA 格式数据 (X_train_spatial + X_train_temporal)
         if data.get("X_train_spatial") is not None:
             # STCA 格式：空间输入 + 时间序列输入
             logger.info("Loading data with STCA format (spatial + temporal)")
             X_train_temporal = data["X_train_temporal"]
-            X_val_temporal = data["X_val_temporal"]
             X_test_temporal = data["X_test_temporal"]
             X_train_spatial = data["X_train_spatial"]
-            X_val_spatial = data["X_val_spatial"]
             X_test_spatial = data["X_test_spatial"]
-            max_satellites = data.get(
-                "max_satellites", X_train_spatial.shape[1])
 
             logger.info(
-                f"  Spatial: Train {X_train_spatial.shape}, Val {X_val_spatial.shape}, Test {X_test_spatial.shape}")
+                f"  Spatial: Train {X_train_spatial.shape}, Test {X_test_spatial.shape}")
             logger.info(
-                f"  Temporal: Train {X_train_temporal.shape}, Val {X_val_temporal.shape}, Test {X_test_temporal.shape}")
+                f"  Temporal: Train {X_train_temporal.shape}, Test {X_test_temporal.shape}")
 
-            # 返回 (空间输入, 时间输入)
+            # 返回 (空间输入，时间输入), (测试集), y_train, y_test
             return (
                 (X_train_spatial, X_train_temporal),
-                (X_val_spatial, X_val_temporal),
                 (X_test_spatial, X_test_temporal),
-                data["y_train"], data["y_val"], data["y_test"]
+                data["y_train"], data["y_test"]
             )
     else:
         logger.info(f"Processed data not found. Running preprocessing...")
-        data_dir = script_dir / config["data_dir"]
+        # 数据目录在 stca 的父目录 (DevLab) 下
+        data_dir = Path(__file__).parent.parent.parent / config["data_dir"]
         preprocessor = StaticPreprocessor(
             data_dir=str(data_dir),
             test_size=config["test_size"],
-            val_size=config["val_size"],
             random_seed=config["random_seed"],
         )
 
@@ -153,15 +158,14 @@ def load_data(config):
 
         return (
             (data["X_train_spatial"], data["X_train_temporal"]),
-            (data["X_val_spatial"], data["X_val_temporal"]),
             (data["X_test_spatial"], data["X_test_temporal"]),
-            data["y_train"], data["y_val"], data["y_test"]
+            data["y_train"], data["y_test"]
         )
 
 
 
 def plot_training_history(history, output_dir, split_mode="indomain"):
-    """Plot and save training history curves with timestamp."""
+    """Plot and save training history curves."""
     import pickle
     import json
 
@@ -172,11 +176,8 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
     plot_data = {
         "epochs": list(range(1, len(history['train_loss']) + 1)),
         "train_loss": [float(x) for x in history['train_loss']],
-        "val_loss": [float(x) for x in history['val_loss']],
         "train_acc": [float(x) for x in history['train_acc']],
-        "val_acc": [float(x) for x in history['val_acc']],
         "train_f1": [float(x) for x in history['train_f1']],
-        "val_f1": [float(x) for x in history['val_f1']],
         "split_mode": split_mode,
     }
 
@@ -206,10 +207,9 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
     # Plot Loss
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, history['train_loss'], label='Training Loss', linewidth=2)
-    plt.plot(epochs, history['val_loss'], label='Validation Loss', linewidth=2)
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Loss', fontsize=12)
-    plt.title('Training and Validation Loss', fontsize=14, fontweight='bold')
+    plt.title('Training Loss', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.savefig(figures_dir / loss_filename, dpi=150, bbox_inches='tight')
@@ -219,10 +219,9 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
     # Plot F1 Score
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, history['train_f1'], label='Training F1', linewidth=2)
-    plt.plot(epochs, history['val_f1'], label='Validation F1', linewidth=2)
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('F1 Score (%)', fontsize=12)
-    plt.title('Training and Validation F1 Score',
+    plt.title('Training F1 Score',
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -234,11 +233,9 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, history['train_acc'],
              label='Training Accuracy', linewidth=2)
-    plt.plot(epochs, history['val_acc'],
-             label='Validation Accuracy', linewidth=2)
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Accuracy (%)', fontsize=12)
-    plt.title('Training and Validation Accuracy',
+    plt.title('Training Accuracy',
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -247,47 +244,190 @@ def plot_training_history(history, output_dir, split_mode="indomain"):
     logger.info(
         f"Training accuracy plot saved to {figures_dir / acc_filename}")
 
-    # Combined plot - 3 rows
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
-    # Loss subplot
-    ax1 = axes[0]
-    ax1.plot(epochs, history['train_loss'], label='Training Loss', linewidth=2)
-    ax1.plot(epochs, history['val_loss'], label='Validation Loss', linewidth=2)
-    ax1.set_xlabel('Epoch', fontsize=11)
-    ax1.set_ylabel('Loss', fontsize=11)
-    ax1.set_title('Loss', fontsize=12, fontweight='bold')
-    ax1.legend(fontsize=9)
-    ax1.grid(True, alpha=0.3)
+def prepare_test_loader(data, batch_size: int = 64, device: torch.device = None):
+    """Prepare test data loader for evaluation."""
+    # Check if dual input (spatial + temporal) data is available
+    if "X_test_spatial" in data and "X_test_temporal" in data:
+        logger.info("Using dual input mode (spatial + temporal)")
+        X_test_2d = data["X_test_spatial"]
+        X_test_3d = data["X_test_temporal"]
+    else:
+        logger.info("Using single input mode (fallback)")
+        X_test_2d = data["X_test"]
+        X_test_3d = data["X_test_temporal"]
 
-    # F1 subplot
-    ax2 = axes[1]
-    ax2.plot(epochs, history['train_f1'], label='Training F1', linewidth=2)
-    ax2.plot(epochs, history['val_f1'], label='Validation F1', linewidth=2)
-    ax2.set_xlabel('Epoch', fontsize=11)
-    ax2.set_ylabel('F1 Score (%)', fontsize=11)
-    ax2.set_title('F1 Score', fontsize=12, fontweight='bold')
-    ax2.legend(fontsize=9)
-    ax2.grid(True, alpha=0.3)
+    y_test = data["y_test"]
 
-    # Accuracy subplot
-    ax3 = axes[2]
-    ax3.plot(epochs, history['train_acc'],
-             label='Training Accuracy', linewidth=2)
-    ax3.plot(epochs, history['val_acc'],
-             label='Validation Accuracy', linewidth=2)
-    ax3.set_xlabel('Epoch', fontsize=11)
-    ax3.set_ylabel('Accuracy (%)', fontsize=11)
-    ax3.set_title('Accuracy', fontsize=12, fontweight='bold')
-    ax3.legend(fontsize=9)
-    ax3.grid(True, alpha=0.3)
+    # 存储 numpy 数组，在 __getitem__ 中转为 tensor
+    X_test_2d_np = np.array(X_test_2d, dtype=np.float32)
+    X_test_3d_np = np.array(X_test_3d, dtype=np.float32)
+    y_test_np = np.array(y_test, dtype=np.float32)
 
-    plt.suptitle('Training History', fontsize=14, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    plt.savefig(figures_dir / history_filename, dpi=150, bbox_inches='tight')
+    # Create dataset
+    class TensorDataset(torch.utils.data.Dataset):
+        def __init__(self, x_2d_np, x_3d_np, y_np):
+            self.x_2d = x_2d_np
+            self.x_3d = x_3d_np
+            self.y = y_np
+
+        def __len__(self):
+            return len(self.y)
+
+        def __getitem__(self, idx):
+            x_2d_item = torch.from_numpy(self.x_2d[idx:idx+1].copy())
+            x_3d_item = torch.from_numpy(self.x_3d[idx:idx+1].copy())
+            y_item = torch.from_numpy(self.y[idx:idx+1].copy())
+            return x_2d_item.squeeze(0), x_3d_item.squeeze(0), y_item.squeeze(0)
+
+    dataset = TensorDataset(X_test_2d_np, X_test_3d_np, y_test_np)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+    # 转换为训练脚本的格式
+    test_loader = []
+    for spatial_batch, temporal_batch, targets in loader:
+        test_loader.append(((spatial_batch, temporal_batch), targets))
+
+    return test_loader
+
+
+def evaluate_model(model, test_loader, device, output_dir, split_mode="indomain"):
+    """Evaluate model on test set and save metrics/plots."""
+    logger.info("Evaluating model on test set...")
+
+    model.eval()
+    all_preds = []
+    all_targets = []
+    all_probs = []
+
+    with torch.no_grad():
+        for batch_data in test_loader:
+            if isinstance(batch_data[0], tuple):
+                (data_2d, data_3d), targets = batch_data
+            else:
+                data_2d = batch_data[0]
+                data_3d = batch_data[0]
+                targets = batch_data[1]
+
+            data_2d = data_2d.to(device)
+            data_3d = data_3d.to(device)
+            targets = targets.to(device)
+
+            outputs = model(x_spatial=data_2d, x_temporal=data_3d)
+            probs = outputs.squeeze(-1)
+            preds = (probs >= 0.5).long()
+
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(targets.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+
+    y_pred = np.array(all_preds)
+    y_true = np.array(all_targets)
+    y_pred_prob = np.array(all_probs)
+
+    # Calculate metrics
+    acc = accuracy_score(y_true, y_pred)
+    prec = precision_score(y_true, y_pred, zero_division=0)
+    rec = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+
+    # Confusion Matrix
+    cm = confusion_matrix(y_true, y_pred)
+    cm_percent = cm.astype('float') / cm.sum(axis=1, keepdims=True) * 100
+
+    # ROC Curve
+    fpr, tpr, _ = roc_curve(y_true, y_pred_prob)
+    roc_auc = auc(fpr, tpr)
+
+    # PR Curve
+    precision_curve, recall_curve, _ = precision_recall_curve(y_true, y_pred_prob)
+    pr_auc = average_precision_score(y_true, y_pred_prob)
+
+    # Classification Report
+    report = classification_report(y_true, y_pred, target_names=['NLOS', 'LOS'])
+
+    metrics = {
+        "accuracy": float(acc),
+        "precision": float(prec),
+        "recall": float(rec),
+        "f1_score": float(f1),
+        "roc_auc": float(roc_auc),
+        "pr_auc": float(pr_auc),
+    }
+
+    logger.info("\n" + "="*50)
+    logger.info("Test Set Evaluation Results")
+    logger.info("="*50)
+    logger.info(f"Accuracy:  {acc:.4f}")
+    logger.info(f"Precision: {prec:.4f}")
+    logger.info(f"Recall:    {rec:.4f}")
+    logger.info(f"F1 Score:  {f1:.4f}")
+    logger.info(f"ROC AUC:   {roc_auc:.4f}")
+    logger.info(f"PR AUC:    {pr_auc:.4f}")
+    logger.info(f"\nClassification Report:\n{report}")
+
+    # Save metrics to JSON (update existing metrics.json)
+    metrics_path = Path(output_dir) / "metrics.json"
+    if metrics_path.exists():
+        with open(metrics_path, "r") as f:
+            all_metrics = json.load(f)
+        all_metrics["test_metrics"] = metrics
+    else:
+        all_metrics = {"test_metrics": metrics}
+
+    with open(metrics_path, "w") as f:
+        json.dump(all_metrics, f, indent=2)
+    logger.info(f"Test metrics saved to {metrics_path}")
+
+    # Generate figures
+    figures_dir = Path(output_dir) / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Plot 1: Confusion Matrix
+    plt.figure(figsize=(8, 6))
+    annot_labels = np.empty(cm.shape, dtype=object)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            annot_labels[i, j] = f'{cm[i, j]:d}\n{cm_percent[i, j]:.1f}%'
+
+    sns.heatmap(cm_percent, annot=annot_labels, fmt='', cmap='Blues',
+                cbar_kws={'format': '%.0f%%'},
+                xticklabels=['NLOS', 'LOS'], yticklabels=['NLOS', 'LOS'])
+    plt.title('Confusion Matrix')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    plt.savefig(figures_dir / f"confusion_matrix_{split_mode}_{timestamp}.png", dpi=150, bbox_inches='tight')
     plt.close()
-    logger.info(
-        f"Combined training history plot saved to {figures_dir / history_filename}")
+    logger.info(f"Confusion matrix saved to {figures_dir / f'confusion_matrix_{split_mode}_{timestamp}.png'}")
+
+    # Plot 2: ROC Curve
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.legend(loc="lower right")
+    plt.title('ROC Curve')
+    plt.savefig(figures_dir / f"roc_curve_{split_mode}_{timestamp}.png", dpi=150, bbox_inches='tight')
+    plt.close()
+    logger.info(f"ROC curve saved to {figures_dir / f'roc_curve_{split_mode}_{timestamp}.png'}")
+
+    # Plot 3: PR Curve
+    plt.figure(figsize=(8, 6))
+    plt.plot(recall_curve, precision_curve, color='green', lw=2, label=f'PR curve (AUC = {pr_auc:.4f})')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc="lower left")
+    plt.savefig(figures_dir / f"pr_curve_{split_mode}_{timestamp}.png", dpi=150, bbox_inches='tight')
+    plt.close()
+    logger.info(f"PR curve saved to {figures_dir / f'pr_curve_{split_mode}_{timestamp}.png'}")
+
+    logger.info("="*50)
+    return metrics
 
 
 from modules.constants import (
@@ -333,7 +473,9 @@ def main(args):
         "input_dim": INPUT_DIM,
         "num_classes": NUM_CLASSES,
         "split_mode": SPLIT_MODE,  # 使用 constants 中配置的模式
-        "output_dir": "outputs/stca",
+        "data_dir": "data for sharing_csv",  # 原始 CSV 数据目录
+        "test_size": 0.2,  # 测试集比例
+        "output_dir": str(ROOT_DIR / "outputs" / "stca"),  # 统一到 DevLab/outputs/stca/
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     }
 
@@ -344,14 +486,13 @@ def main(args):
     data_result = load_data(config)
 
     # STCA 模型始终使用双输入 (空间 + 时间)
-    # data_result is ((X_train_spatial, X_train_temporal), ...)
-    (X_train_spatial, X_train_temporal), (X_val_spatial, X_val_temporal), (X_test_spatial,
-                                                                           X_test_temporal), y_train, y_val, y_test = data_result
+    # data_result is ((X_train_spatial, X_train_temporal), (X_test_spatial, X_test_temporal), y_train, y_test)
+    (X_train_spatial, X_train_temporal), (X_test_spatial, X_test_temporal), y_train, y_test = data_result
     logger.info(f"Data loaded (STCA mode - spatial + temporal):")
     logger.info(
-        f"  Spatial: Train {X_train_spatial.shape}, Val {X_val_spatial.shape}, Test {X_test_spatial.shape}")
+        f"  Spatial: Train {X_train_spatial.shape}, Test {X_test_spatial.shape}")
     logger.info(
-        f"  Temporal: Train {X_train_temporal.shape}, Val {X_val_temporal.shape}, Test {X_test_temporal.shape}")
+        f"  Temporal: Train {X_train_temporal.shape}, Test {X_test_temporal.shape}")
 
     # Ensure input_dim matches data (spatial input is 2D: N, max_satellites, features)
     if config["input_dim"] != X_train_spatial.shape[-1]:
@@ -362,7 +503,6 @@ def main(args):
     # 标签分布检查
     print("\n=== [DEBUG] 标签分布检查 ===")
     print(f"训练集标签分布：NLOS={np.sum(y_train == 0)}, LOS={np.sum(y_train == 1)}, 比例={np.sum(y_train == 1) / len(y_train):.2%}")
-    print(f"验证集标签分布：NLOS={np.sum(y_val == 0)}, LOS={np.sum(y_val == 1)}, 比例={np.sum(y_val == 1) / len(y_val):.2%}")
     print(f"测试集标签分布：NLOS={np.sum(y_test == 0)}, LOS={np.sum(y_test == 1)}, 比例={np.sum(y_test == 1) / len(y_test):.2%}")
 
     # Create model
@@ -382,18 +522,16 @@ def main(args):
     logger.info(f"Total parameters: {total_params:,}")
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
-    # Train using model.fit()
+    # Train using model.fit() - 无验证集模式
     logger.info(f"使用学习率：{config['learning_rate']}")
     history = model.fit(
         X_train_spatial, y_train,
-        X_val_spatial=X_val_spatial, y_val=y_val,
         epochs=config["epochs"],
         batch_size=config["batch_size"],
         lr=config["learning_rate"],
         device=config["device"],
         verbose=True,
         X_train_temporal=X_train_temporal,
-        X_val_temporal=X_val_temporal,
     )
 
     # Save final model (with split_mode in filename to avoid overwrite)
@@ -410,40 +548,18 @@ def main(args):
     # Plot training history
     plot_training_history(history, config["output_dir"], config["split_mode"])
 
-    # Evaluate using model.evaluate()
-    metrics = model.evaluate(
-        X_test_spatial, y_test,
-        device=config["device"],
-        X_test_3d=X_test_temporal,
+    # Evaluate on test set
+    test_loader = prepare_test_loader(
+        {"X_test_spatial": X_test_spatial, "X_test_temporal": X_test_temporal, "y_test": y_test},
+        batch_size=64,
+        device=config["device"]
+    )
+    test_metrics = evaluate_model(
+        model, test_loader, config["device"],
+        config["output_dir"], config["split_mode"]
     )
 
-    # Save metrics - 转换 numpy 类型为 Python 原生类型
-    def convert_to_python_type(obj):
-        """递归转换 numpy 类型为 Python 原生类型"""
-        if isinstance(obj, (np.integer, np.int64, np.int32)):
-            return int(obj)
-        elif isinstance(obj, (np.floating, np.float64, np.float32)):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, dict):
-            return {k: convert_to_python_type(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple)):
-            return [convert_to_python_type(v) for v in obj]
-        return obj
-
-    metrics_serializable = {
-        k: convert_to_python_type(v)
-        for k, v in metrics.items()
-        if k not in ['y_pred', 'y_prob', 'y_true']  # 排除大数组
-    }
-
-    metrics_path = output_dir / "metrics.json"
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics_serializable, f, indent=4)
-    logger.info(f"Metrics saved to {metrics_path}")
-
-    logger.info("Training complete!")
+    logger.info("Training and evaluation complete!")
 
 
 if __name__ == "__main__":

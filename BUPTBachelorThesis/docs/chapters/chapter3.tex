@@ -1,94 +1,255 @@
-\chapter{需求分析与总体设计}
+\chapter{STCA 模型设计}
 
-\section{功能需求分析}
+\section{引言}
 
-本研究需实现以下核心功能：
+第 2 章综述了 GNSS NLOS 信号检测领域的国内外研究进展。基于几何约束的方法实现简单但泛化能力有限；传统机器学习方法可融合多维特征但仍依赖人工特征工程；深度学习方法可自动学习特征表示，但现有方法普遍存在未能同时利用时空特征、跨场景泛化能力不足等问题。
 
-（1）NLOS/LOS 二分类。接收 GNSS 观测数据，输出视距或非视距的判决结果。
+针对上述问题，本文提出一种基于时空交叉注意力（Spatiotemporal Cross-Attention, STCA）的 NLOS 信号检测方法。本章详细介绍 STCA 模型的算法设计，包括数据预处理流程、模型总体架构以及各核心模块的设计原理与数学表述。
 
-（2）内域泛化验证。在同一测点的数据划分下评估模型性能，检验模型对已知场景的识别能力。
+\section{STCA 模型设计}
 
-（3）外域泛化验证。采用跨测点划分策略，验证模型在未知场景中的适应能力。
+\subsection{数据预处理}
 
-（4）模型训练与保存。支持多 epoch 训练，自动保存验证性能最优的模型权重。
+原始 GNSS 观测数据需经预处理后方可输入模型。本研究采用四级过滤策略：
 
-（5）实验结果可视化。生成混淆矩阵、ROC 曲线、PR 曲线、训练历史等图表。
+（1）卫星高度角约束。剔除高度角低于 5°的卫星观测，减少大气误差干扰。
 
-\section{性能指标定义}
+（2）C/N0 有效范围过滤。剔除载噪比低于 20 dB-Hz 或高于 50 dB-Hz 的异常观测。
 
-采用以下指标评估分类性能：
+（3）伪距残差阈值过滤。剔除伪距残差绝对值超过 100 米的观测。
+
+（4）缺失值处理。删除含 NaN 的行和无效数据。
+
+时间窗口构建：窗口大小设为 8 历元，滑动步长为 1 历元。每个窗口的输出形状为$(window\_size, 4)$，其中 4 对应 4 个特征（C/N0、高度角、方位角、伪距残差）。
+
+特征标准化：采用 Z-score 标准化，将各特征转换为均值为 0、标准差为 1 的分布。标准化参数仅从训练集估计，然后应用于测试集，避免数据泄露。
+
+数据集划分：本研究采用外域划分（outdomain）模式，即 P2、P3、P4、P5、P8 测点用于训练，P6、P7 测点用于测试，验证模型的跨场景泛化能力。
+
+数据预处理流程如图~\ref{fig:preprocessing-pipeline} 所示。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/data_preprocessing_pipeline.png}
+\caption{数据预处理流程图}
+\label{fig:preprocessing-pipeline}
+\end{figure}
+
+\subsection{模型框架}
+
+STCA 模型采用双输入通道架构，分别处理空间特征和时序特征：
 
 \begin{itemize}
-\item 准确率（Accuracy）：$(TP+TN)/(TP+TN+FP+FN)$
-\item 精确率（Precision）：$TP/(TP+FP)$
-\item 召回率（Recall）：$TP/(TP+FN)$
-\item F1 分数：$2\times P\times R/(P+R)$
-\item ROC 曲线下面积（ROC-AUC）
-\item PR 曲线下面积（PR-AUC）
+    \item \textbf{空间输入}：$(B, max\_sats, 4)$，其中$B$为批次大小，$max\_sats$为最大可见卫星数，4 对应 4 个特征（C/N0、高度角、方位角、伪距残差）。
+    \item \textbf{时序输入}：$(B, window\_size, 4)$，其中$window\_size$为时间窗口长度（默认 8 历元）。
 \end{itemize}
 
-其中，TP、TN、FP、FN 分别表示真正例、真负例、假正例、假负例的样本数量。
-
-对于 NLOS 检测任务，召回率（检出率）比精确率更为关键：漏检 NLOS 信号会在定位解算中引入较大误差，而误检 LOS 信号仅减少可用卫星数量。
-
-\section{系统总体架构}
-
-系统由数据预处理、模型训练、评估可视化三部分组成：
-
-（1）数据预处理：CSV 原始数据读取、清洗、时间窗口构建、标准化、NPZ 格式保存。
-
-（2）模型训练：STCA 模型前向传播、反向传播、参数更新、模型保存。
-
-（3）评估可视化：混淆矩阵、ROC/PR 曲线、训练历史绘制。
-
-系统工作流程如下：
-
+模型由五个核心模块串联而成：
 \begin{enumerate}
-\item 从 CSV 文件读取原始 GNSS 观测数据
-\item 执行数据清洗与过滤，剔除异常值
-\item 构建时间窗口样本
-\item 进行特征标准化处理
-\item 保存为 NPZ 格式供训练使用
-\item 训练 STCA 模型并保存最佳权重
-\item 在测试集上评估模型性能
-\item 生成可视化结果
+    \item 空间编码器（Spatial Encoder）：基于多头自注意力机制
+    \item 时序编码器（Temporal Encoder）：基于单向 LSTM
+    \item 交叉注意力融合模块（Cross-Attention Fusion）
+    \item 稀疏表示层（Sparse Representation）
+    \item 二分类器（Binary Classifier）
 \end{enumerate}
 
-\section{技术选型}
+STCA 模型的总体架构如图~\ref{fig:stca-architecture} 所示。
 
-本系统的技术选型如下：
-
-（1）深度学习框架：PyTorch 2.x。PyTorch 具有动态计算图、易于调试、社区活跃等优点，适合快速原型开发与实验迭代。
-
-（2）数据处理库：NumPy。NumPy 提供高效的数组操作与线性代数运算，是 Python 科学计算的基础库。
-
-（3）可视化工具：Matplotlib。Matplotlib 支持多种图表类型，可生成出版级质量的图像，满足论文插图需求。
-
-（4）文档撰写：\LaTeX{}。\LaTeX{} 是学术界广泛使用的排版系统，尤其适合含有大量数学公式的科技文档。
-
-\section{开发环境配置}
-
-开发环境配置如表~\ref{tab:dev-env} 所示。
-
-\begin{table}[h]
+\begin{figure}[htbp]
 \centering
-\caption{开发环境配置}
-\label{tab:dev-env}
-\begin{tabular}{lc}
-\hline
-组件 & 版本/配置 \\
-\hline
-操作系统 & Windows 11 / Linux \\
-Python & 3.9+ \\
-PyTorch & 2.0+ \\
-CUDA & 11.8 \\
-NumPy & 1.24+ \\
-Matplotlib & 3.7+ \\
-Scikit-learn & 1.2+ \\
-\hline
-\end{tabular}
-\end{table}
+\includegraphics[width=0.95\textwidth]{figures/stca_model_architecture.png}
+\caption{STCA 模型总体架构图}
+\label{fig:stca-architecture}
+\end{figure}
+
+STCA 模型的前向传播算法如算法~\ref{alg:stca-forward} 所示。
+
+\begin{algorithm}[htbp]
+\caption{STCA 模型前向传播算法}
+\label{alg:stca-forward}
+\begin{algorithmic}[1]
+\Require 空间输入 $\bm{X}_{spatial} \in \mathbb{R}^{B \times N \times 4}$, 时序输入 $\bm{X}_{temporal} \in \mathbb{R}^{B \times T \times 4}$
+\Ensure NLOS 概率预测 $\hat{y} \in [0, 1]$
+
+\State \Comment{空间编码阶段}
+\State $\bm{H}_{spatial} \gets \text{ReLU}(\bm{W}_1 \bm{X}_{spatial} + \bm{b}_1)$
+\State $\bm{H}_{spatial}' \gets \text{Dropout}(\text{ReLU}(\bm{W}_2 \bm{H}_{spatial} + \bm{b}_2))$
+\State $\bm{Q}, \bm{K}, \bm{V} \gets \bm{H}_{spatial}'\bm{W}_Q, \bm{H}_{spatial}'\bm{W}_K, \bm{H}_{spatial}'\bm{W}_V$
+\State $\bm{A}_{spatial} \gets \text{softmax}\left(\frac{\bm{Q}\bm{K}^T}{\sqrt{d_k}}\right)\bm{V}$
+\State $\bm{c}_{spatial} \gets \frac{1}{N}\sum_{i=1}^{N} \bm{A}_{spatial}^{(i)}$ \Comment{全局平均池化}
+
+\State \Comment{时序编码阶段}
+\State $\bm{H}_{temporal} \gets \text{ReLU}(\bm{W}_t \bm{X}_{temporal} + \bm{b}_t)$
+\State $\bm{h}_0 \gets \bm{0}$ \Comment{初始化隐藏状态}
+\For{$t = 1$ to $T$}
+    \State $\bm{h}_t \gets \text{LSTM}(\bm{H}_{temporal}^{(t)}, \bm{h}_{t-1})$
+\EndFor
+\State $\bm{c}_{temporal} \gets \bm{h}_T$ \Comment{提取最后时刻隐藏状态}
+
+\State \Comment{交叉注意力融合阶段}
+\State $\bm{A}_{cross} \gets \text{softmax}\left(\frac{\bm{c}_{temporal} \bm{c}_{spatial}^T}{\sqrt{d}}\right)$
+\State $\bm{F}_{fused} \gets \bm{A}_{cross} \bm{c}_{spatial}$
+
+\State \Comment{稀疏表示与分类阶段}
+\State $\bm{Z} \gets \text{ReLU}(\bm{W}_s \bm{F}_{fused} + \bm{b}_s)$
+\State $\hat{y} \gets \sigma(\bm{W}_c \bm{Z} + \bm{b}_c)$
+
+\State \Return $\hat{y}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{空间编码器设计}
+
+空间编码器负责从多颗可见卫星的观测特征中提取空间分布信息。考虑到 GNSS 卫星在天空中的几何分布对信号传播特性的影响，本研究设计基于天顶角注意力机制的编码器。
+
+设空间输入为$\bm{X}_{spatial} \in \mathbb{R}^{B \times N \times 4}$，其中$N$为可见卫星数量。首先通过两层全连接网络将原始特征映射到 16 维嵌入空间：
+\begin{equation}
+\bm{H}_{spatial} = \text{ReLU}(\bm{W}_1 \bm{X}_{spatial} + \bm{b}_1)
+\end{equation}
+\begin{equation}
+\bm{H}_{spatial}' = \text{Dropout}(\text{ReLU}(\bm{W}_2 \bm{H}_{spatial} + \bm{b}_2))
+\end{equation}
+
+随后，采用自注意力机制计算卫星间的相互关系。天顶角注意力权重计算如下：
+\begin{equation}
+\bm{Q} = \bm{H}_{spatial}' \bm{W}_Q, \quad \bm{K} = \bm{H}_{spatial}' \bm{W}_K, \quad \bm{V} = \bm{H}_{spatial}' \bm{W}_V
+\end{equation}
+\begin{equation}
+\bm{A}_{spatial} = \text{softmax}\left(\frac{\bm{Q}\bm{K}^T}{\sqrt{d_k}}\right)\bm{V}
+\end{equation}
+
+其中$\bm{W}_Q, \bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 16}$为可学习参数，$d_k=16$为缩放因子。注意力机制使模型能够根据卫星信号质量的相对重要性进行加权聚合。
+
+最后，通过全局平均池化将变长卫星序列压缩为固定长度的空间上下文向量：
+\begin{equation}
+\bm{c}_{spatial} = \frac{1}{N}\sum_{i=1}^{N} \bm{A}_{spatial}^{(i)}
+\end{equation}
+
+空间编码器的结构如图~\ref{fig:spatial-encoder} 所示。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/spatial_encoder_architecture.png}
+\caption{空间编码器架构与自注意力机制}
+\label{fig:spatial-encoder}
+\end{figure}
+
+\subsection{时序编码器设计}
+
+时序编码器采用单向长短期记忆网络（LSTM）处理时间窗口内的信号演化模式。LSTM 通过门控机制有效捕捉长程时间依赖，适合建模 NLOS 状态的时序连续性。单向 LSTM 仅利用历史信息进行预测，符合实时检测场景的因果约束。
+
+设时序输入为$\bm{X}_{temporal} \in \mathbb{R}^{B \times T \times 4}$，其中$T$为窗口大小。首先通过全连接层将特征映射到 16 维嵌入空间：
+\begin{equation}
+\bm{H}_{temporal} = \text{ReLU}(\bm{W}_t \bm{X}_{temporal} + \bm{b}_t)
+\end{equation}
+
+随后，LSTM 从前向处理时序数据：
+\begin{equation}
+\bm{h}_t = \text{LSTM}(\bm{H}_{temporal}^{(t)}, \bm{h}_{t-1})
+\end{equation}
+
+提取最后一个时间步的隐藏状态作为时序上下文向量：
+\begin{equation}
+\bm{c}_{temporal} = \bm{h}_T
+\end{equation}
+
+\subsection{交叉注意力融合模块}
+
+交叉注意力机制负责将空间特征与时序特征进行融合。具体而言，将时序编码器输出的时序上下文向量作为查询（Query），空间编码器输出的空间上下文向量作为键（Key）和值（Value）。注意力权重通过时序查询与空间键的相似度计算得到，嵌入维度为 32：
+\begin{equation}
+\bm{A}_{cross} = \text{softmax}\left(\frac{\bm{Q}_{temporal} \bm{K}_{spatial}^T}{\sqrt{d}}\right)
+\end{equation}
+
+计算得到的注意力权重用于加权聚合空间值向量，生成时空融合特征表示：
+\begin{equation}
+\bm{F}_{fused} = \bm{A}_{cross} \bm{V}_{spatial}
+\end{equation}
+
+这一机制使模型能够根据当前时序状态，自适应地关注相关的空间特征，建立空间几何分布与信号时间演变之间的关联。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/cross_attention_mechanism.png}
+\caption{交叉注意力融合机制示意图}
+\label{fig:cross-attention}
+\end{figure}
+
+\subsection{稀疏表示层设计}
+
+交叉注意力模块输出的融合特征经过稀疏表示层进一步处理。稀疏表示层通过线性投影和非线性激活，将 32 维融合特征映射到更紧凑的判别性特征空间：
+\begin{equation}
+\bm{Z} = \text{ReLU}(\bm{W}_s \cdot \bm{F}_{fused} + \bm{b}_s)
+\end{equation}
+
+其中$\bm{W}_s \in \mathbb{R}^{32 \times 32}$为稀疏投影矩阵，$\bm{b}_s$为偏置项，ReLU 激活函数引入非线性并产生稀疏激活模式。稀疏表示的核心思想是迫使模型仅激活与当前分类决策最相关的少数特征维度，从而抑制冗余信息，增强特征的判别能力。
+
+\subsection{分类器与损失函数}
+
+稀疏特征$\bm{Z}$经过全连接分类层映射到二元分类空间，最终通过 Sigmoid 激活函数输出 NLOS 概率预测：
+\begin{equation}
+\hat{y} = \sigma(\bm{W}_c \cdot \bm{Z} + \bm{b}_c)
+\end{equation}
+
+其中$\bm{W}_c$和$\bm{b}_c$分别为分类层的权重和偏置，$\hat{y} \in [0, 1]$表示预测样本为 NLOS 信号的概率。
+
+模型训练采用二元交叉熵损失函数：
+\begin{equation}
+\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}[y_i \cdot \log(\hat{y}_i) + (1-y_i) \cdot \log(1-\hat{y}_i)]
+\end{equation}
+
+其中$y_i \in \{0, 1\}$为真实标签（0 表示 LOS，1 表示 NLOS），$\hat{y}_i$为模型预测概率。交叉熵损失直接优化预测概率分布与真实分布之间的差异，在预测错误时产生较大梯度，加速模型收敛。
+
+\subsection{模型复杂度分析}
+
+STCA 模型的参数量主要来自以下几个部分：
+
+（1）空间编码器：特征映射矩阵$\bm{W}_1 \in \mathbb{R}^{4 \times 16}$、$\bm{W}_2 \in \mathbb{R}^{16 \times 16}$，注意力权重矩阵$\bm{W}_Q, \bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 16}$，共计约 1,500 个参数。
+
+（2）时序编码器：LSTM 输入矩阵$\bm{W}_t \in \mathbb{R}^{4 \times 16}$，LSTM 的门控矩阵（输入门、遗忘门、输出门、候选记忆）各$\bm{W} \in \mathbb{R}^{(16+16) \times 16}$，共计约 4,000 个参数。
+
+（3）交叉注意力模块：查询投影矩阵$\bm{W}_Q \in \mathbb{R}^{16 \times 32}$，键值投影矩阵$\bm{W}_K, \bm{W}_V \in \mathbb{R}^{16 \times 32}$，共计约 2,000 个参数。
+
+（4）稀疏表示层：投影矩阵$\bm{W}_s \in \mathbb{R}^{32 \times 32}$，共计约 1,000 个参数。
+
+（5）分类器：隐藏层矩阵$\bm{W}_{c1} \in \mathbb{R}^{32 \times 16}$、$\bm{W}_{c2} \in \mathbb{R}^{16 \times 8}$，输出层$\bm{W}_{out} \in \mathbb{R}^{8 \times 1}$，共计约 600 个参数。
+
+模型总参数量约为 9,000 个，属于轻量级深度学习模型，适合在资源受限的边缘设备部署。
+
+对于典型配置（$B=16, N=12, T=8$），单次前向传播的浮点运算次数（FLOPs）约为$10^6$量级。参考类似规模的深度学习模型在 Intel Core i7 等 CPU 上的推理性能，预计单次推理延迟在 5ms 以内，满足车载导航等实时性要求。
+
+STCA 模型的训练算法如算法~\ref{alg:stca-train} 所示。
+
+\begin{algorithm}[htbp]
+\caption{STCA 模型训练算法}
+\label{alg:stca-train}
+\begin{algorithmic}[1]
+\Require 训练集 $\mathcal{D} = \{(\bm{X}_{spatial}^{(i)}, \bm{X}_{temporal}^{(i)}, y_i)\}_{i=1}^{M}$, 学习率 $\eta$, 训练轮数 $E$, 批次大小 $B$
+\Ensure 训练好的模型参数 $\Theta$
+
+\State 初始化模型参数 $\Theta$
+\State 初始化优化器 $\text{Adam}(\Theta, \eta)$
+\For{$epoch = 1$ to $E$}
+    \State $\mathcal{D}_{shuffled} \gets \text{Shuffle}(\mathcal{D})$ \Comment{打乱训练数据}
+    \For{每个批次 $\mathcal{B} \subset \mathcal{D}_{shuffled}$}
+        \State $\mathcal{L}_{batch} \gets 0$
+        \For{$(\bm{X}_{spatial}, \bm{X}_{temporal}, y) \in \mathcal{B}$}
+            \State $\hat{y} \gets \text{STCA\_Forward}(\bm{X}_{spatial}, \bm{X}_{temporal}; \Theta)$
+            \State $\mathcal{L} \gets -[y \cdot \log(\hat{y}) + (1-y) \cdot \log(1-\hat{y})]$ \Comment{二元交叉熵}
+            \State $\mathcal{L}_{batch} \gets \mathcal{L}_{batch} + \mathcal{L}$
+        \EndFor
+        \State $\mathcal{L}_{avg} \gets \frac{1}{|\mathcal{B}|} \mathcal{L}_{batch}$
+        \State $\nabla_{\Theta} \gets \text{Backprop}(\mathcal{L}_{avg}, \Theta)$ \Comment{反向传播}
+        \State $\Theta \gets \text{Adam}(\Theta, \nabla_{\Theta})$ \Comment{更新参数}
+    \EndFor
+    \State 计算当前轮次训练集准确率 $\text{Acc}_{train}$
+    \If{$\text{Acc}_{train}$ 收敛}
+        \State $\eta \gets 0.1 \times \eta$ \Comment{学习率衰减}
+    \EndIf
+\EndFor
+\State \Return $\Theta$
+\end{algorithmic}
+\end{algorithm}
 
 \section{本章小结}
 
-本章从系统工程角度定义了 GNSS NLOS 识别系统的功能需求与性能指标。功能需求包括 NLOS/LOS 二分类、内域泛化验证、外域泛化验证、模型训练与保存、实验结果可视化。性能指标采用准确率、精确率、召回率、F1 分数、ROC-AUC、PR-AUC 等分类任务标准指标。系统架构由数据预处理、模型训练、评估可视化三部分组成。技术选型采用 PyTorch 深度学习框架、NumPy 数据处理库、Matplotlib 可视化工具和 LaTeX 文档排版系统。
+本章详细阐述了 STCA 模型的算法设计。首先介绍了数据预处理流程，包括四级过滤策略、时间窗口构建、特征标准化和数据集划分方法。然后描述了模型总体架构，采用时空双输入通道设计，由空间编码器、时序编码器、交叉注意力融合模块、稀疏表示层和二分类器五个核心模块串联而成。各模块均采用数学形式化描述，便于理解算法原理。模型复杂度分析表明，STCA 总参数量约 9,000 个，单次前向传播 FLOPs 约为$10^6$量级，预计推理延迟在 5ms 以内，属于轻量级模型，满足实时检测要求。

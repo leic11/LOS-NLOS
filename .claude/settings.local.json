@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Skill(humanizer-zh)",
+      "Bash(dir \"C:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\outputs\\\\stca\")",
+      "Bash(dir:*)",
+      "Bash(pdflatex -interaction=nonstopmode main.tex)",
+      "Bash(del /f /q \"C:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\outputs\\\\stca\\\\ablation\\\\hyperparam\\\\*.json\")",
+      "Bash(del /f /q \"C:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\outputs\\\\stca\\\\ablation\\\\hyperparam\\\\*.csv\")",
+      "Bash(xelatex -interaction=nonstopmode main.tex)",
+      "Bash(ls -la docs/figures/*.png)",
+      "Bash(cp \"docs/figures/\"*.png \"figures/\")",
+      "Bash(cp \"docs/figures/\"*.png figures/)"
     ]
   }
 }

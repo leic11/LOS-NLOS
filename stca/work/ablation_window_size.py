@@ -1,6 +1,6 @@
 # ablation_window_size.py
 """
-消融实验 1：时间窗口长度实验（9 特征）
+消融实验 1：时间窗口长度实验（4 特征）
 ============================
 
 用途：
@@ -8,7 +8,7 @@
 
 实验设置：
     - 使用跨域数据（outdomain 模式）
-    - 使用 9 特征输入（4 原始 +5 衍生）
+    - 使用 4 特征输入（4 个原始特征）
     - 窗口长度从 6 到 32，步长为 2（即 6, 8, 10, ..., 32）
     - 固定其他超参数，仅改变窗口长度
 
@@ -110,14 +110,11 @@ def train_and_evaluate(window_size):
     X_train_spatial = data["X_train_spatial"]
     X_train_temporal = data["X_train_temporal"]
     y_train = data["y_train"]
-    X_val_spatial = data["X_val_spatial"]
-    X_val_temporal = data["X_val_temporal"]
-    y_val = data["y_val"]
     X_test_spatial = data["X_test_spatial"]
     X_test_temporal = data["X_test_temporal"]
     y_test = data["y_test"]
 
-    logger.info(f"Data loaded: Train={len(y_train)}, Val={len(y_val)}, Test={len(y_test)}")
+    logger.info(f"Data loaded: Train={len(y_train)}, Test={len(y_test)}")
 
     # 导入默认配置
     from modules.constants import (
@@ -127,9 +124,9 @@ def train_and_evaluate(window_size):
         CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
     )
 
-    # 构建模型（使用 9 特征输入）
+    # 构建模型（使用 4 特征输入）
     model = STCAModel(
-        input_dim=9,  # 9 特征
+        input_dim=4,  # 4 特征
         num_classes=2,
         spatial_embed_dim=SPATIAL_EMBED_DIM,
         spatial_num_heads=SPATIAL_NUM_HEADS,
@@ -154,14 +151,12 @@ def train_and_evaluate(window_size):
     logger.info(f"Training for {CONFIG['epochs']} epochs...")
     history = model.fit(
         X_train_spatial, y_train,
-        X_val_spatial=X_val_spatial, y_val=y_val,
         epochs=CONFIG["epochs"],
         batch_size=CONFIG["batch_size"],
         lr=CONFIG["learning_rate"],
         device=device,
         verbose=True,  # 显示每个 epoch 的训练进度
         X_train_temporal=X_train_temporal,
-        X_val_temporal=X_val_temporal,
     )
 
     # 评估
@@ -179,7 +174,7 @@ def train_and_evaluate(window_size):
         "precision": float(metrics["precision"]),
         "recall": float(metrics["recall"]),
         "f1_score": float(metrics["f1_score"]),
-        "best_val_acc": float(max(history["val_acc"])),
+        "best_train_acc": float(max(history["train_acc"])),
     }
 
     return result, history

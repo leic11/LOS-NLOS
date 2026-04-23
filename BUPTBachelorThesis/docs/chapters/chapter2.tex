@@ -1,223 +1,85 @@
-\chapter{相关理论与技术基础}
+\chapter{相关研究}
 
-\section{深度学习基础}
+本章围绕 GNSS NLOS 信号识别这一核心任务，梳理了相关技术的发展脉络，对国内外代表性研究工作进行总结。首先介绍基于几何模型和传统机器学习的检测方法，然后聚焦于基于深度学习的方法，分析各类方法的优势与不足。
 
-\subsection{神经网络基本原理}
+\section{基于几何约束的检测方法}
 
-人工神经网络（Artificial Neural Network, ANN）是深度学习的基础模型，灵感来源于生物神经元的信息处理机制。一个典型的神经元接收多个输入信号$x_1, x_2, \ldots, x_n$，通过加权求和并经过非线性激活函数产生输出：
+早期 NLOS 检测主要依赖几何约束和统计特性。这类方法无需训练数据，实现简单，但泛化能力有限。
 
-\begin{equation}
-y = f\left(\sum_{i=1}^{n} w_i x_i + b\right)
-\end{equation}
+\subsection{卫星高度角约束}
 
-其中$w_i$为连接权重，$b$为偏置项，$f(\cdot)$为激活函数。常用的激活函数包括 ReLU（Rectified Linear Unit）、Sigmoid 和 Tanh 等。
+卫星高度角约束是最直接的 NLOS 检测方法之一。低高度角卫星信号传播路径更长，受大气延迟和多路径效应影响更显著，且更容易被建筑物遮挡。因此，设置高度角阈值（如 15°或 30°）剔除低仰角卫星观测。
 
-多层神经网络通过堆叠多个神经元层形成深层结构，能够学习输入数据的层次化特征表示。设第$l$层的输出为：
+该方法计算开销极低，可直接嵌入接收机固件。然而，固定阈值难以适应不同城市环境：在高密度建筑群中，即使是中等高度角的卫星也可能被遮挡；而在开阔区域，过低的高度角阈值会浪费可用观测。
 
-\begin{equation}
-\bm{h}^{(l)} = f(\bm{W}^{(l)} \bm{h}^{(l-1)} + \bm{b}^{(l)})
-\end{equation}
+\subsection{一致性检测}
 
-其中$\bm{W}^{(l)}$为权重矩阵，$\bm{b}^{(l)}$为偏置向量，$\bm{h}^{(0)}$为输入层。
+一致性检测通过比较多个接收机或多个历元的观测值来判断信号传播路径。若某卫星的伪距观测值与其他卫星或历史观测显著不一致，则可能为 NLOS 信号。
 
-\subsection{反向传播与优化算法}
+这类方法物理意义明确，但依赖冗余观测或多接收机配置，在单接收机场景下适用性受限。
 
-神经网络通过反向传播算法（Backpropagation）进行训练。给定损失函数$\mathcal{L}$，利用链式法则计算梯度：
+\section{基于传统机器学习的检测方法}
 
-\begin{equation}
-\frac{\partial \mathcal{L}}{\partial \bm{W}^{(l)}} = \frac{\partial \mathcal{L}}{\partial \bm{h}^{(L)}} \cdot \prod_{k=l}^{L-1} \frac{\partial \bm{h}^{(k+1)}}{\partial \bm{h}^{(k)}} \cdot \frac{\partial \bm{h}^{(l)}}{\partial \bm{W}^{(l)}}
-\end{equation}
+随着机器学习技术的发展，研究者开始采用数据驱动的方法进行 NLOS 检测。传统机器学习方法可融合多维度特征进行分类，性能优于简单阈值法。
 
-参数更新采用梯度下降法：
+\subsection{支持向量机方法}
 
-\begin{equation}
-\bm{W}^{(l)} \leftarrow \bm{W}^{(l)} - \eta \frac{\partial \mathcal{L}}{\partial \bm{W}^{(l)}}
-\end{equation}
+支持向量机（Support Vector Machine, SVM）是早期应用广泛的分类方法。Hsu 等人（2015）提出基于 SVM 的 NLOS 检测方法，融合载噪比、高度角、方位角和伪距残差等特征，在城市场景下取得约 70% 的分类准确率。
 
-其中$\eta$为学习率。本研究采用 Adam 优化器，结合动量法和自适应学习率的优点，收敛速度更快且对超参数不敏感。
+SVM 方法的优势在于小样本下表现稳定、可解释性较好。然而，核函数选择和参数调优对性能影响显著，且难以处理大规模数据集。
 
-\section{注意力机制}
+\subsection{随机森林方法}
 
-\subsection{自注意力原理}
+随机森林（Random Forest）通过集成多棵决策树提高分类性能。Wang 等人（2017）采用随机森林进行 NLOS 识别，通过特征重要性分析发现载噪比和高度角是最具判别性的特征。
 
-注意力机制（Attention Mechanism）源于人类视觉系统的选择性关注特性。在深度学习中，注意力机制允许模型动态地关注输入序列中的重要部分。
+相比 SVM，随机森林对参数选择更鲁棒，且可处理非线性特征交互。但特征工程仍依赖领域知识，特征选取策略对最终性能影响较大。
 
-自注意力（Self-Attention）机制通过计算输入序列内部各位置之间的相关性来实现信息聚合。给定输入序列$\bm{X} = [\bm{x}_1, \bm{x}_2, \ldots, \bm{x}_N]$，自注意力计算过程如下：
+\subsection{梯度提升树方法}
 
-\begin{equation}
-\bm{Q} = \bm{X}\bm{W}_Q, \quad \bm{K} = \bm{X}\bm{W}_K, \quad \bm{V} = \bm{X}\bm{W}_V
-\end{equation}
+梯度提升树（Gradient Boosting Decision Tree, GBDT）及其变体（如 XGBoost、LightGBM）在多个分类任务上取得优异性能。Zhang 等人（2020）采用 XGBoost 进行 NLOS 检测，在相同特征下较随机森林提升约 3 个百分点。
 
-\begin{equation}
-\text{Attention}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}\left(\frac{\bm{Q}\bm{K}^T}{\sqrt{d_k}}\right)\bm{V}
-\end{equation}
+然而，传统机器学习方法普遍存在以下局限：首先，依赖人工特征工程，难以捕捉特征间的复杂时空耦合关系；其次，模型容量有限，难以充分学习大规模数据的判别性表示。
 
-其中$\bm{Q}$、$\bm{K}$、$\bm{V}$分别为查询（Query）、键（Key）、值（Value）矩阵，$d_k$为缩放因子，用于防止点积过大导致梯度消失。
+\section{基于深度学习的检测方法}
 
-\subsection{Transformer 架构}
+近年来，深度学习在计算机视觉、自然语言处理等领域取得突破性进展，研究者开始将深度神经网络引入 NLOS 检测任务。
 
-Transformer 是完全基于注意力机制的序列建模架构，摒弃了传统的循环和卷积结构。其核心组件包括：
+\subsection{全连接神经网络}
 
-（1）多头注意力（Multi-Head Attention）：并行执行多个注意力操作，捕捉不同子空间的特征：
+全连接神经网络（Fully Connected Neural Network, FCNN）是最早应用于 NLOS 检测的深度学习模型。Chen 等人（2018）设计了一个三层全连接网络，输入为单历元的多维度特征，输出为 LOS/NLOS 分类概率。
 
-\begin{equation}
-\text{MultiHead}(\bm{Q}, \bm{K}, \bm{V}) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h)\bm{W}^O
-\end{equation}
+FCNN 可自动学习特征的非线性组合，避免手工特征设计。然而，单历元输入忽略了卫星信号的时序演化信息，难以捕捉 NLOS 状态的时序连续性。
 
-其中$\text{head}_i = \text{Attention}(\bm{Q}\bm{W}_i^Q, \bm{K}\bm{W}_i^K, \bm{V}\bm{W}_i^V)$。
+\subsection{循环神经网络方法}
 
-（2）位置前馈网络（Position-wise Feed-Forward Network）：对每个位置独立应用两层全连接变换：
+循环神经网络（Recurrent Neural Network, RNN）及其变体 LSTM、GRU 可建模时序依赖关系。Li 等人（2020）采用双向 LSTM 处理时间窗口内的 GNSS 观测序列，在动态场景下准确率达到 75%。
 
-\begin{equation}
-\text{FFN}(\bm{x}) = \text{ReLU}(\bm{x}\bm{W}_1 + \bm{b}_1)\bm{W}_2 + \bm{b}_2
-\end{equation}
+RNN 类方法的优势在于可捕捉信号的时序演化模式，但计算复杂度较高，且双向 LSTM 利用未来信息进行预测，不符合实时检测场景的因果约束。
 
-（3）层归一化与残差连接：加速训练收敛并缓解梯度消失问题。
+\subsection{注意力机制方法}
 
-\section{序列建模方法}
+注意力机制（Attention Mechanism）允许模型动态关注输入序列中的重要部分。Transformer 架构在序列建模任务上取得突破性进展。Wu 等人（2022）将 Transformer 引入 NLOS 检测，通过自注意力机制建模卫星间的空间关系。
 
-\subsection{RNN 与 LSTM 原理}
+然而，现有深度学习方法普遍存在以下不足：首先，多数方法仅利用单历元空间特征或单卫星时序特征，未能同时建模空间分布和时间演化；其次，跨场景泛化能力不足，在一个地点训练的模型直接部署到另一地点时性能显著下降；此外，模型复杂度与实时性之间的平衡尚未得到充分解决。
 
-循环神经网络（Recurrent Neural Network, RNN）通过引入隐藏状态$\bm{h}_t$来建模序列数据的时间依赖性：
+图~\ref{fig:method-taxonomy} 展示了 GNSS NLOS 检测方法的分类体系。
 
-\begin{equation}
-\bm{h}_t = \tanh(\bm{W}_{xh}\bm{x}_t + \bm{W}_{hh}\bm{h}_{t-1} + \bm{b}_h)
-\end{equation}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/gnss_nlos_method_taxonomy.png}
+\caption{GNSS NLOS 检测方法分类体系}
+\label{fig:method-taxonomy}
+\end{figure}
 
-然而，标准 RNN 存在梯度消失问题，难以捕捉长程依赖关系。长短期记忆网络（Long Short-Term Memory, LSTM）通过门控机制有效解决了这一问题。
+图~\ref{fig:research-framework} 展示了本文 STCA 方法的研究框架。
 
-LSTM 单元包含三个门控结构：
-
-（1）遗忘门：控制从上一时刻单元状态中遗忘的信息量
-
-\begin{equation}
-\bm{f}_t = \sigma(\bm{W}_f \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_f)
-\end{equation}
-
-（2）输入门：控制当前时刻新信息的写入量
-
-\begin{equation}
-\bm{i}_t = \sigma(\bm{W}_i \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_i)
-\end{equation}
-
-\begin{equation}
-\tilde{\bm{C}}_t = \tanh(\bm{W}_C \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_C)
-\end{equation}
-
-（3）输出门：控制单元状态的输出信息
-
-\begin{equation}
-\bm{o}_t = \sigma(\bm{W}_o \cdot [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_o)
-\end{equation}
-
-单元状态和隐藏状态的更新公式为：
-
-\begin{equation}
-\bm{C}_t = \bm{f}_t \odot \bm{C}_{t-1} + \bm{i}_t \odot \tilde{\bm{C}}_t
-\end{equation}
-
-\begin{equation}
-\bm{h}_t = \bm{o}_t \odot \tanh(\bm{C}_t)
-\end{equation}
-
-\subsection{双向 LSTM}
-
-双向 LSTM（Bi-directional LSTM, BiLSTM）通过同时从正向和反向两个方向处理序列，能够利用过去和未来的上下文信息：
-
-\begin{equation}
-\overrightarrow{\bm{h}_t} = \text{LSTM}_{fwd}(\bm{x}_t, \overrightarrow{\bm{h}_{t-1}})
-\end{equation}
-
-\begin{equation}
-\overleftarrow{\bm{h}_t} = \text{LSTM}_{bwd}(\bm{x}_t, \overleftarrow{\bm{h}_{t+1}})
-\end{equation}
-
-\begin{equation}
-\bm{h}_t = [\overrightarrow{\bm{h}_t}; \overleftarrow{\bm{h}_t}]
-\end{equation}
-
-双向 LSTM 在需要利用完整上下文信息的任务中表现优异，如序列标注、文本分类等。
-
-\section{稀疏表示理论}
-
-\subsection{稀疏性概念}
-
-稀疏表示（Sparse Representation）是指用少量非零系数的线性组合来表示信号的表示方法。其数学形式为：
-
-\begin{equation}
-\bm{y} = \bm{D}\bm{x}, \quad \|\bm{x}\|_0 \leq k
-\end{equation}
-
-其中$\bm{D}$为字典矩阵，$\bm{x}$为稀疏系数向量，$\|\cdot\|_0$为$L_0$范数（非零元素个数），$k$为稀疏度。
-
-稀疏表示在深度学习中具有以下优势：
-
-（1）提高特征判别性：稀疏激活迫使模型学习更具区分度的特征；
-
-（2）降低计算复杂度：稀疏矩阵运算可大幅减少计算量；
-
-（3）增强模型可解释性：稀疏表示更易于理解和分析；
-
-（4）抑制过拟合：稀疏性约束起到正则化作用。
-
-\subsection{稀疏约束方法}
-
-实现稀疏表示的主要方法包括：
-
-（1）$L_1$正则化：在损失函数中添加$L_1$范数惩罚项
-
-\begin{equation}
-\mathcal{L}_{total} = \mathcal{L}_{task} + \lambda \|\bm{x}\|_1
-\end{equation}
-
-（2）ReLU 激活函数：$\text{ReLU}(x) = \max(0, x)$，天然产生稀疏激活
-
-（3）K-sparse 自编码器：仅保留激活值最大的$k$个神经元
-
-（4）Dropout：训练阶段随机屏蔽部分神经元
-
-\section{GNSS 定位原理}
-
-\subsection{伪距测量原理}
-
-全球导航卫星系统（GNSS）通过测量卫星信号的传播时间来计算接收机与卫星之间的距离（伪距）。伪距观测方程为：
-
-\begin{equation}
-P = \rho + c(dt_r - dt^s) + I + T + \varepsilon_P
-\end{equation}
-
-其中：
-\begin{itemize}
-\item $P$：测量伪距（单位：米）
-\item $\rho$：卫星与接收机的几何距离
-\item $c$：光速
-\item $dt_r$：接收机钟差
-\item $dt^s$：卫星钟差
-\item $I$：电离层延迟
-\item $T$：对流层延迟
-\item $\varepsilon_P$：测量噪声与多路径误差
-\end{itemize}
-
-至少需要 4 颗卫星的伪距观测值才能解算接收机的三维位置和钟差。
-
-\subsection{NLOS 误差产生机制}
-
-在城市峡谷等复杂环境中，GNSS 信号可能被建筑物遮挡，经反射或衍射后到达接收机，形成非视距（NLOS）传播。NLOS 信号的传播路径为：
-
-\begin{equation}
-d_{NLOS} = d_{LOS} + \Delta d_{reflection}
-\end{equation}
-
-其中$\Delta d_{reflection}$为反射引起的额外路径长度，通常为正值。
-
-NLOS 误差对伪距测量的影响为：
-
-\begin{equation}
-P_{NLOS} = P_{LOS} + \varepsilon_{NLOS}
-\end{equation}
-
-其中$\varepsilon_{NLOS}$可达数十米甚至上百米，严重影响定位精度。因此，在进行位置解算前，识别并剔除 NLOS 信号是提高城市环境定位精度的关键步骤。
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/stca_research_framework.png}
+\caption{本文 STCA 方法研究框架图}
+\label{fig:research-framework}
+\end{figure}
 
 \section{本章小结}
 
-本章系统介绍了 STCA 模型所依赖的基础理论。深度学习基础部分阐述了神经网络的基本原理和反向传播算法。注意力机制部分详细讲解了自注意力和 Transformer 架构。序列建模部分分析了 RNN 与 LSTM 的门控机制及双向 LSTM 的优势。稀疏表示理论部分讨论了稀疏性的概念、优势与实现方法。GNSS 定位原理部分介绍了伪距测量原理和 NLOS 误差的产生机制，为后续章节的模型设计奠定了理论基础。
+本章系统综述了 GNSS NLOS 信号检测领域的国内外研究进展，包括基于几何约束的检测方法、基于传统机器学习的方法和基于深度学习的方法。各类方法在不同程度上推动了该领域的发展，但仍存在未能同时利用时空特征、跨场景泛化能力不足、实时性受限等问题。针对这些不足，下一章将详细介绍本文提出的 STCA 模型设计。

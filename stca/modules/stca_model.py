@@ -156,6 +156,7 @@ from .constants import (
     CROSS_ATTN_EMBED_DIM,
     CROSS_ATTN_NUM_HEADS,
     CROSS_ATTN_DROPOUT,
+    SPARSE_EMBED_DIM,
     CLASSIFIER_HIDDEN_DIMS,
     CLASSIFIER_DROPOUT,
 )
@@ -197,6 +198,9 @@ class STCAModel(nn.Module):
         cross_attn_embed_dim: int = CROSS_ATTN_EMBED_DIM,
         cross_attn_num_heads: int = CROSS_ATTN_NUM_HEADS,
         cross_attn_dropout: float = CROSS_ATTN_DROPOUT,
+
+        # 稀疏表示参数 - 默认值来自 constants.py
+        sparse_embed_dim: int = SPARSE_EMBED_DIM,
 
         # 分类器参数 - 默认值来自 constants.py
         classifier_hidden_dims: list = CLASSIFIER_HIDDEN_DIMS,
@@ -251,8 +255,11 @@ class STCAModel(nn.Module):
                 embed_dim=cross_attn_embed_dim,
                 num_heads=cross_attn_num_heads,
                 dropout_rate=cross_attn_dropout,
+                query_input_dim=temporal_out_dim,  # 时间编码器输出维度
+                kv_input_dim=spatial_embed_dim,    # 空间编码器输出维度
             )
-            fusion_out_dim = self.cross_attention.embed_dim
+            # 交叉注意力输出 + 时间特征拼接，保留完整信息
+            fusion_out_dim = cross_attn_embed_dim + temporal_out_dim
         else:
             self.cross_attention = None
             # Concat 基线模型：拼接时间 + 空间特征
@@ -261,8 +268,11 @@ class STCAModel(nn.Module):
 
         # 稀疏表示层（可选模块，论文 III-F）
         if use_sparse_representation:
-            self.sparse_rep = SparseRepresentation(embed_dim=fusion_out_dim)
-            classifier_input_dim = fusion_out_dim
+            self.sparse_rep = SparseRepresentation(
+                embed_dim=fusion_out_dim,
+                sparse_embed_dim=sparse_embed_dim,
+            )
+            classifier_input_dim = sparse_embed_dim
         else:
             self.sparse_rep = None
             classifier_input_dim = fusion_out_dim
@@ -326,14 +336,15 @@ class STCAModel(nn.Module):
                 cross_attn_out = self.cross_attention(query, key, value) if self.cross_attention else None
                 attn_weights = None
 
+            # 拼接时间特征和交叉注意力输出，保留完整信息
+            # cross_attn_out: (batch, 1, embed_dim), temporal_emb: (batch, temporal_out_dim)
+            fused_features = torch.cat([cross_attn_out.squeeze(1), temporal_emb], dim=-1)
+
             # 稀疏表示（可选模块，论文 III-F）
             if self.use_sparse_representation and self.sparse_rep is not None:
-                sparse_emb = self.sparse_rep(cross_attn_out.squeeze(1))
+                sparse_emb = self.sparse_rep(fused_features)
             else:
-                sparse_emb = cross_attn_out.squeeze(1)
-
-            # 用于 return_features 的融合特征
-            fusion_features = cross_attn_out
+                sparse_emb = fused_features
         else:
             # 无交叉注意力：Concat 基线模型（论文对比实验）
             # 将空间特征和时间特征直接拼接
@@ -368,10 +379,11 @@ class STCAModel(nn.Module):
         else:
             return logits
 
-    def fit(self, X_train_spatial, y_train, X_val_spatial=None, y_val=None,
+    def fit(self, X_train_spatial, y_train,
             epochs=50, batch_size=16, lr=0.001, device='cpu',
             verbose=True, progress_callback=None,
-            X_train_temporal=None, X_val_temporal=None,
+            X_train_temporal=None,
+            X_val_spatial=None, X_val_temporal=None, y_val=None,
             use_scheduler=True, scheduler_factor=0.5, scheduler_patience=5, scheduler_min_lr=1e-6):
         """
         训练模型方法。
@@ -403,12 +415,7 @@ class STCAModel(nn.Module):
         if use_dual_input:
             # 使用分离的空间 (2D) 和时间 (3D) 输入
             # X_train_spatial 和 X_train_temporal 已经是参数传入的值
-            if X_val_spatial is not None and X_val_temporal is not None:
-                # X_val_spatial 和 X_val_temporal 已经是参数传入的值
-                pass
-            else:
-                X_val_spatial = None
-                X_val_temporal = None
+            pass
         else:
             # 自动检测：如果 X_train_spatial 是 3D，用于时间模型
             X_train_np = np.array(X_train_spatial) if not isinstance(X_train_spatial, np.ndarray) else X_train_spatial

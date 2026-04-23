@@ -8,17 +8,17 @@ STCA 模型常量配置
 # ============================================================================
 # 空间编码器 (AAM Module) 默认参数
 # ============================================================================
-SPATIAL_EMBED_DIM = 16          # 空间嵌入维度
-SPATIAL_NUM_HEADS = 4           # 注意力头数 (16/2 = 8 维/头)
-SPATIAL_NUM_LAYERS = 2          # 编码器层数
-SPATIAL_D_FF = 32              # 前馈网络隐藏层维度 (embed_dim * 2)
+SPATIAL_EMBED_DIM = 32          # 空间嵌入维度
+SPATIAL_NUM_HEADS = 4           # 注意力头数
+SPATIAL_NUM_LAYERS = 1          # 编码器层数
+SPATIAL_D_FF = SPATIAL_EMBED_DIM * 2  # 前馈网络隐藏层维度 (embed_dim * 2)
 SPATIAL_DROPOUT = 0.5           # Dropout 比率
 
 # ============================================================================
 # 时间编码器 (LSTM-TFE Module) 默认参数
 # ============================================================================
-TEMPORAL_EMBED_DIM = 16         # 时间嵌入维度
-TEMPORAL_NUM_LAYERS = 2         # LSTM 层数
+TEMPORAL_EMBED_DIM = 32         # 时间嵌入维度
+TEMPORAL_NUM_LAYERS = 1         # LSTM 层数
 TEMPORAL_DROPOUT = 0.5          # Dropout 比率
 TEMPORAL_BIDIRECTIONAL = False  # 单向 LSTM
 
@@ -26,13 +26,13 @@ TEMPORAL_BIDIRECTIONAL = False  # 单向 LSTM
 # 交叉注意力模块默认参数
 # ============================================================================
 CROSS_ATTN_EMBED_DIM = 16       # 交叉注意力嵌入维度
-CROSS_ATTN_NUM_HEADS = 1        # 注意力头数（单头，用于特征融合）
+CROSS_ATTN_NUM_HEADS = 4        # 交叉注意力头数
 CROSS_ATTN_DROPOUT = 0.5        # Dropout 比率
 
 # ============================================================================
 # 稀疏表示模块默认参数
 # ============================================================================
-SPARSE_EMBED_DIM = 16           # 稀疏嵌入维度 (与交叉注意力输出一致)
+SPARSE_EMBED_DIM = 64           # 稀疏嵌入维度
 
 # ============================================================================
 # 分类器默认参数
