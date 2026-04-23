@@ -58,7 +58,7 @@ logger = setup_logger(__name__)
 # ============================================================================
 
 # 从 constants.py 导入统一超参数
-from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED
+from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED, DEVICE
 
 # 模型配置（固定超参数，使用 modules/constants.py 默认值）
 CONFIG = {
@@ -173,8 +173,7 @@ def train_model(split_mode, module_key, module_config):
 
     logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"Using device: {device}")
+    logger.info(f"Using device: {DEVICE}")
 
     # 训练
     logger.info(f"Training for {CONFIG['epochs']} epochs...")
@@ -184,7 +183,7 @@ def train_model(split_mode, module_key, module_config):
         epochs=CONFIG["epochs"],
         batch_size=CONFIG["batch_size"],
         lr=CONFIG["learning_rate"],
-        device=device,
+        device=DEVICE,
         verbose=True,
         X_train_temporal=X_train_temporal,
         X_val_temporal=X_val_temporal,
@@ -194,7 +193,7 @@ def train_model(split_mode, module_key, module_config):
     logger.info("Evaluating on test set...")
     metrics = model.evaluate(
         X_test_spatial, y_test,
-        device=device,
+        device=DEVICE,
         X_test_3d=X_test_temporal,
     )
 
@@ -206,8 +205,8 @@ def train_model(split_mode, module_key, module_config):
     with torch.no_grad():
         for i in range(0, len(X_test_spatial), 64):
             end_idx = min(i + 64, len(X_test_spatial))
-            x_spatial_batch = torch.FloatTensor(X_test_spatial[i:end_idx]).to(device)
-            x_temporal_batch = torch.FloatTensor(X_test_temporal[i:end_idx]).to(device)
+            x_spatial_batch = torch.FloatTensor(X_test_spatial[i:end_idx]).to(DEVICE)
+            x_temporal_batch = torch.FloatTensor(X_test_temporal[i:end_idx]).to(DEVICE)
 
             outputs = model(x_spatial=x_spatial_batch, x_temporal=x_temporal_batch)
             probs = outputs.squeeze(-1)

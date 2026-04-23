@@ -67,7 +67,7 @@ from modules.constants import (
     CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
     SPARSE_EMBED_DIM,
     CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
-    LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED,
+    LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED, DEVICE,
 )
 
 BASE_CONFIG = {
@@ -265,8 +265,7 @@ def train_and_evaluate(model_key, model_config):
 
     logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"Using device: {device}")
+    logger.info(f"Using device: {DEVICE}")
 
     # 训练
     logger.info(f"Training for {BASE_CONFIG['epochs']} epochs...")
@@ -275,7 +274,7 @@ def train_and_evaluate(model_key, model_config):
         epochs=BASE_CONFIG["epochs"],
         batch_size=BASE_CONFIG["batch_size"],
         lr=BASE_CONFIG["learning_rate"],
-        device=device,
+        device=DEVICE,
         verbose=False,
         X_train_temporal=X_train_temporal,
     )
@@ -284,7 +283,7 @@ def train_and_evaluate(model_key, model_config):
     logger.info("Evaluating on test set...")
     metrics = model.evaluate(
         X_test_spatial, y_test,
-        device=device,
+        device=DEVICE,
         X_test_3d=X_test_temporal,
     )
 
@@ -296,8 +295,8 @@ def train_and_evaluate(model_key, model_config):
     with torch.no_grad():
         for i in range(0, len(X_test_spatial), 64):
             end_idx = min(i + 64, len(X_test_spatial))
-            x_spatial_batch = torch.FloatTensor(X_test_spatial[i:end_idx]).to(device)
-            x_temporal_batch = torch.FloatTensor(X_test_temporal[i:end_idx]).to(device)
+            x_spatial_batch = torch.FloatTensor(X_test_spatial[i:end_idx]).to(DEVICE)
+            x_temporal_batch = torch.FloatTensor(X_test_temporal[i:end_idx]).to(DEVICE)
 
             # 根据模型类型调整 forward 调用
             if model_key == "spatial_only":

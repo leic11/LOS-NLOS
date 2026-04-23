@@ -159,6 +159,7 @@ from .constants import (
     SPARSE_EMBED_DIM,
     CLASSIFIER_HIDDEN_DIMS,
     CLASSIFIER_DROPOUT,
+    DEVICE,
 )
 
 
@@ -380,7 +381,7 @@ class STCAModel(nn.Module):
             return logits
 
     def fit(self, X_train_spatial, y_train,
-            epochs=50, batch_size=16, lr=0.001, device='cpu',
+            epochs=50, batch_size=16, lr=0.001, device=DEVICE,
             verbose=True, progress_callback=None,
             X_train_temporal=None,
             X_val_spatial=None, X_val_temporal=None, y_val=None,
@@ -667,7 +668,7 @@ class STCAModel(nn.Module):
         
         return history
 
-    def evaluate(self, X_test, y_test, device='cpu', X_test_3d=None):
+    def evaluate(self, X_test, y_test, device=DEVICE, X_test_3d=None):
         """Evaluate model on test set.
 
         参数:

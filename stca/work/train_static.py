@@ -435,7 +435,7 @@ from modules.constants import (
     TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS, TEMPORAL_DROPOUT, TEMPORAL_BIDIRECTIONAL,
     CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS, CROSS_ATTN_DROPOUT,
     CLASSIFIER_HIDDEN_DIMS, CLASSIFIER_DROPOUT,
-    BATCH_SIZE, EPOCHS, LEARNING_RATE, RANDOM_SEED,
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, RANDOM_SEED, DEVICE,
 )
 
 # 数据预处理参数从 data_loading.constants 导入
@@ -476,7 +476,7 @@ def main(args):
         "data_dir": "data for sharing_csv",  # 原始 CSV 数据目录
         "test_size": 0.2,  # 测试集比例
         "output_dir": str(ROOT_DIR / "outputs" / "stca"),  # 统一到 DevLab/outputs/stca/
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "device": DEVICE,
     }
 
     # Set seed

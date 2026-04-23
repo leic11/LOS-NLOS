@@ -97,7 +97,7 @@ from modules.constants import (
     CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS,
     SPARSE_EMBED_DIM,
     CLASSIFIER_HIDDEN_DIMS,
-    LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED,
+    LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED, DEVICE,
 )
 
 # 基准配置字典
@@ -250,8 +250,7 @@ def train_and_evaluate(config, param_name, param_value):
 
     logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"Using device: {device}")
+    logger.info(f"Using device: {DEVICE}")
 
     # 训练（使用 config 中的学习率、batch_size、epochs）
     logger.info(f"Training for {config['epochs']} epochs...")
@@ -260,7 +259,7 @@ def train_and_evaluate(config, param_name, param_value):
         epochs=config["epochs"],
         batch_size=config["batch_size"],
         lr=config["learning_rate"],
-        device=device,
+        device=DEVICE,
         verbose=False,
         X_train_temporal=X_train_temporal,
     )
@@ -269,7 +268,7 @@ def train_and_evaluate(config, param_name, param_value):
     logger.info("Evaluating on test set...")
     metrics = model.evaluate(
         X_test_spatial, y_test,
-        device=device,
+        device=DEVICE,
         X_test_3d=X_test_temporal,
     )
 

@@ -56,7 +56,7 @@ logger = setup_logger(__name__)
 WINDOW_SIZES = list(range(6, 33, 2))  # 6, 8, 10, ..., 32
 
 # 从 constants.py 导入统一超参数
-from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED
+from modules.constants import LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED, DEVICE
 
 # 固定超参数
 CONFIG = {
@@ -144,8 +144,7 @@ def train_and_evaluate(window_size):
 
     logger.info(f"模型参数量：{sum(p.numel() for p in model.parameters()):,}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"Using device: {device}")
+    logger.info(f"Using device: {DEVICE}")
 
     # 训练
     logger.info(f"Training for {CONFIG['epochs']} epochs...")
@@ -154,7 +153,7 @@ def train_and_evaluate(window_size):
         epochs=CONFIG["epochs"],
         batch_size=CONFIG["batch_size"],
         lr=CONFIG["learning_rate"],
-        device=device,
+        device=DEVICE,
         verbose=True,  # 显示每个 epoch 的训练进度
         X_train_temporal=X_train_temporal,
     )
@@ -163,7 +162,7 @@ def train_and_evaluate(window_size):
     logger.info("Evaluating on test set...")
     metrics = model.evaluate(
         X_test_spatial, y_test,
-        device=device,
+        device=DEVICE,
         X_test_3d=X_test_temporal,
     )
 
