@@ -1,6 +1,6 @@
 # ablation_baseline.py
 """
-基线模型对比实验（5 种模型变体）
+基线模型对比实验（3 种模型变体）
 ============================
 
 用途：
@@ -9,14 +9,12 @@
 实验设置：
     - 使用 outdomain 数据划分模式
     - 固定超参数（来自 modules/constants.py）
-    - 5 种模型变体对比
+    - 3 种模型变体对比
 
-5 种模型架构：
-    1. Spatial-Only：仅空间编码器 → 全局池化 → 分类器
-    2. Temporal-Only：仅 LSTM → 分类器
-    3. Concat：空间 + 时间 → 拼接 → 分类器
-    4. CrossAttn：空间 + 时间 → 交叉注意力 → 分类器
-    5. Full STCA：空间 + 时间 → 交叉注意力 → 稀疏表示 → 分类器
+3 种模型架构：
+    1. Concat：空间 + 时间 → 拼接 → 分类器
+    2. CrossAttn：空间 + 时间 → 交叉注意力 → 分类器
+    3. Full STCA：空间 + 时间 → 交叉注意力 → 稀疏表示 → 分类器
 
 输出：
     - 汇总表格（模型 | Acc | Pre | Rec | F1）
@@ -71,28 +69,28 @@ from modules.constants import (
 )
 
 BASE_CONFIG = {
-    "spatial_embed_dim": SPATIAL_EMBED_DIM,       # 16
-    "spatial_num_heads": SPATIAL_NUM_HEADS,       # 4
-    "spatial_num_layers": SPATIAL_NUM_LAYERS,     # 2
-    "spatial_d_ff": SPATIAL_D_FF,                 # 32
-    "spatial_dropout": SPATIAL_DROPOUT,           # 0.5
-    "temporal_embed_dim": TEMPORAL_EMBED_DIM,     # 16
-    "temporal_num_layers": TEMPORAL_NUM_LAYERS,   # 2
-    "temporal_dropout": TEMPORAL_DROPOUT,         # 0.5
-    "cross_attn_embed_dim": CROSS_ATTN_EMBED_DIM, # 32
-    "cross_attn_num_heads": CROSS_ATTN_NUM_HEADS, # 1
-    "cross_attn_dropout": CROSS_ATTN_DROPOUT,     # 0.5
-    "sparse_embed_dim": SPARSE_EMBED_DIM,         # 32
-    "classifier_hidden_dims": CLASSIFIER_HIDDEN_DIMS,  # [16, 8]
-    "classifier_dropout": CLASSIFIER_DROPOUT,     # 0.5
-    "learning_rate": LEARNING_RATE,               # 1e-4
-    "batch_size": BATCH_SIZE,                     # 16
-    "epochs": EPOCHS,                             # 50
-    "random_seed": RANDOM_SEED,                   # 42
+    "spatial_embed_dim": SPATIAL_EMBED_DIM,       
+    "spatial_num_heads": SPATIAL_NUM_HEADS,       
+    "spatial_num_layers": SPATIAL_NUM_LAYERS,     
+    "spatial_d_ff": SPATIAL_D_FF,                 
+    "spatial_dropout": SPATIAL_DROPOUT,           
+    "temporal_embed_dim": TEMPORAL_EMBED_DIM,     
+    "temporal_num_layers": TEMPORAL_NUM_LAYERS,   
+    "temporal_dropout": TEMPORAL_DROPOUT,         
+    "cross_attn_embed_dim": CROSS_ATTN_EMBED_DIM, 
+    "cross_attn_num_heads": CROSS_ATTN_NUM_HEADS, 
+    "cross_attn_dropout": CROSS_ATTN_DROPOUT,     
+    "sparse_embed_dim": SPARSE_EMBED_DIM,         
+    "classifier_hidden_dims": CLASSIFIER_HIDDEN_DIMS,  
+    "classifier_dropout": CLASSIFIER_DROPOUT,     
+    "learning_rate": LEARNING_RATE,               
+    "batch_size": BATCH_SIZE,                     
+    "epochs": EPOCHS,                             
+    "random_seed": RANDOM_SEED,                  
     "max_satellites": DEFAULT_MAX_SATELLITES,
     "window_size": DEFAULT_WINDOW_SIZE,
     "split_mode": "outdomain",
-    "input_dim": 4,  # 4 特征
+    "input_dim": 4,  
     "num_classes": 2,
 }
 
@@ -101,20 +99,6 @@ BASE_CONFIG = {
 # ============================================================================
 
 BASELINE_CONFIGS = {
-    "spatial_only": {
-        "name": "Spatial-Only",
-        "description": "仅空间编码器",
-        "use_cross_attention": False,
-        "use_sparse_representation": False,
-        "use_temporal": False,
-    },
-    "temporal_only": {
-        "name": "Temporal-Only",
-        "description": "仅时间编码器",
-        "use_cross_attention": False,
-        "use_sparse_representation": False,
-        "use_spatial": False,
-    },
     "concat": {
         "name": "Concat",
         "description": "空间 + 时间拼接",
@@ -163,78 +147,25 @@ def load_or_preprocess_data(split_mode, window_size):
 
 def create_model(model_key, model_config):
     """根据配置创建模型"""
-    # Spatial-Only 和 Temporal-Only 需要特殊处理
-    if model_key == "spatial_only":
-        # 仅空间模型：use_cross_attention=False, use_sparse_representation=False
-        # 在 forward 中只使用 spatial_emb
-        model = STCAModel(
-            input_dim=BASE_CONFIG["input_dim"],
-            num_classes=BASE_CONFIG["num_classes"],
-            spatial_embed_dim=BASE_CONFIG["spatial_embed_dim"],
-            spatial_num_heads=BASE_CONFIG["spatial_num_heads"],
-            spatial_num_layers=BASE_CONFIG["spatial_num_layers"],
-            spatial_d_ff=BASE_CONFIG["spatial_d_ff"],
-            spatial_dropout=BASE_CONFIG["spatial_dropout"],
-            temporal_embed_dim=BASE_CONFIG["temporal_embed_dim"],
-            temporal_num_layers=BASE_CONFIG["temporal_num_layers"],
-            temporal_dropout=BASE_CONFIG["temporal_dropout"],
-            cross_attn_embed_dim=BASE_CONFIG["cross_attn_embed_dim"],
-            cross_attn_num_heads=BASE_CONFIG["cross_attn_num_heads"],
-            cross_attn_dropout=BASE_CONFIG["cross_attn_dropout"],
-            classifier_hidden_dims=BASE_CONFIG["classifier_hidden_dims"],
-            classifier_dropout=BASE_CONFIG["classifier_dropout"],
-            use_cross_attention=False,
-            use_sparse_representation=False,
-        )
-        # 标记为 spatial-only 模式
-        model.model_variant = "spatial_only"
-
-    elif model_key == "temporal_only":
-        # 仅时间模型
-        model = STCAModel(
-            input_dim=BASE_CONFIG["input_dim"],
-            num_classes=BASE_CONFIG["num_classes"],
-            spatial_embed_dim=BASE_CONFIG["spatial_embed_dim"],
-            spatial_num_heads=BASE_CONFIG["spatial_num_heads"],
-            spatial_num_layers=BASE_CONFIG["spatial_num_layers"],
-            spatial_d_ff=BASE_CONFIG["spatial_d_ff"],
-            spatial_dropout=BASE_CONFIG["spatial_dropout"],
-            temporal_embed_dim=BASE_CONFIG["temporal_embed_dim"],
-            temporal_num_layers=BASE_CONFIG["temporal_num_layers"],
-            temporal_dropout=BASE_CONFIG["temporal_dropout"],
-            cross_attn_embed_dim=BASE_CONFIG["cross_attn_embed_dim"],
-            cross_attn_num_heads=BASE_CONFIG["cross_attn_num_heads"],
-            cross_attn_dropout=BASE_CONFIG["cross_attn_dropout"],
-            classifier_hidden_dims=BASE_CONFIG["classifier_hidden_dims"],
-            classifier_dropout=BASE_CONFIG["classifier_dropout"],
-            use_cross_attention=False,
-            use_sparse_representation=False,
-        )
-        # 标记为 temporal-only 模式
-        model.model_variant = "temporal_only"
-
-    else:
-        # Concat, CrossAttn, Full STCA 使用标准配置
-        model = STCAModel(
-            input_dim=BASE_CONFIG["input_dim"],
-            num_classes=BASE_CONFIG["num_classes"],
-            spatial_embed_dim=BASE_CONFIG["spatial_embed_dim"],
-            spatial_num_heads=BASE_CONFIG["spatial_num_heads"],
-            spatial_num_layers=BASE_CONFIG["spatial_num_layers"],
-            spatial_d_ff=BASE_CONFIG["spatial_d_ff"],
-            spatial_dropout=BASE_CONFIG["spatial_dropout"],
-            temporal_embed_dim=BASE_CONFIG["temporal_embed_dim"],
-            temporal_num_layers=BASE_CONFIG["temporal_num_layers"],
-            temporal_dropout=BASE_CONFIG["temporal_dropout"],
-            cross_attn_embed_dim=BASE_CONFIG["cross_attn_embed_dim"],
-            cross_attn_num_heads=BASE_CONFIG["cross_attn_num_heads"],
-            cross_attn_dropout=BASE_CONFIG["cross_attn_dropout"],
-            classifier_hidden_dims=BASE_CONFIG["classifier_hidden_dims"],
-            classifier_dropout=BASE_CONFIG["classifier_dropout"],
-            use_cross_attention=model_config["use_cross_attention"],
-            use_sparse_representation=model_config["use_sparse_representation"],
-        )
-        model.model_variant = model_key
+    model = STCAModel(
+        input_dim=BASE_CONFIG["input_dim"],
+        num_classes=BASE_CONFIG["num_classes"],
+        spatial_embed_dim=BASE_CONFIG["spatial_embed_dim"],
+        spatial_num_heads=BASE_CONFIG["spatial_num_heads"],
+        spatial_num_layers=BASE_CONFIG["spatial_num_layers"],
+        spatial_d_ff=BASE_CONFIG["spatial_d_ff"],
+        spatial_dropout=BASE_CONFIG["spatial_dropout"],
+        temporal_embed_dim=BASE_CONFIG["temporal_embed_dim"],
+        temporal_num_layers=BASE_CONFIG["temporal_num_layers"],
+        temporal_dropout=BASE_CONFIG["temporal_dropout"],
+        cross_attn_embed_dim=BASE_CONFIG["cross_attn_embed_dim"],
+        cross_attn_num_heads=BASE_CONFIG["cross_attn_num_heads"],
+        cross_attn_dropout=BASE_CONFIG["cross_attn_dropout"],
+        classifier_hidden_dims=BASE_CONFIG["classifier_hidden_dims"],
+        classifier_dropout=BASE_CONFIG["classifier_dropout"],
+        use_cross_attention=model_config["use_cross_attention"],
+        use_sparse_representation=model_config["use_sparse_representation"],
+    )
 
     return model
 
@@ -298,15 +229,7 @@ def train_and_evaluate(model_key, model_config):
             x_spatial_batch = torch.FloatTensor(X_test_spatial[i:end_idx]).to(DEVICE)
             x_temporal_batch = torch.FloatTensor(X_test_temporal[i:end_idx]).to(DEVICE)
 
-            # 根据模型类型调整 forward 调用
-            if model_key == "spatial_only":
-                # 仅空间模型：只使用 spatial 输入
-                outputs = model(x_spatial=x_spatial_batch, x_temporal=x_spatial_batch)
-            elif model_key == "temporal_only":
-                # 仅时间模型：只使用 temporal 输入
-                outputs = model(x_spatial=x_spatial_batch, x_temporal=x_temporal_batch)
-            else:
-                outputs = model(x_spatial=x_spatial_batch, x_temporal=x_temporal_batch)
+            outputs = model(x_spatial=x_spatial_batch, x_temporal=x_temporal_batch)
 
             probs = outputs.squeeze(-1)
             preds = (probs >= 0.5).long()
@@ -368,50 +291,47 @@ def plot_confusion_matrix(y_true, y_pred, model_key, model_name):
 
 
 def plot_summary_comparison(all_results):
-    """绘制性能对比柱状图"""
+    """绘制性能对比柱状图（带绝对提升增量标注，两张独立图片）"""
     model_names = [r["model_name"] for r in all_results]
-    accuracies = [r["accuracy"] * 100 for r in all_results]
-    f1_scores = [r["f1_score"] * 100 for r in all_results]
+    accuracies = [r["accuracy"] for r in all_results]
+    f1_scores = [r["f1_score"] for r in all_results]
 
-    x = np.arange(len(model_names))
-    width = 0.35
+    baseline_acc = accuracies[0]
+    baseline_f1 = f1_scores[0]
+    acc_gains = [a - baseline_acc for a in accuracies]
+    f1_gains = [f - baseline_f1 for f in f1_scores]
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    rects1 = ax.bar(x - width/2, accuracies, width, label='Accuracy (%)', color='#1f77b4')
-    rects2 = ax.bar(x + width/2, f1_scores, width, label='F1 Score (%)', color='#ff7f0e')
-
-    # 添加数值标签
-    for rect in rects1:
-        height = rect.get_height()
-        ax.annotate(f'{height:.2f}',
-                    xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha='center', va='bottom', fontsize=9)
-
-    for rect in rects2:
-        height = rect.get_height()
-        ax.annotate(f'{height:.2f}',
-                    xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha='center', va='bottom', fontsize=9)
-
-    ax.set_xlabel('Model Architecture', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Performance (%)', fontsize=12, fontweight='bold')
-    ax.set_title('Baseline Model Comparison', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(model_names, rotation=15, ha='right')
-    ax.legend()
-    ax.set_ylim(0, 100)
-
+    # === 图1：Accuracy ===
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for i, (name, acc, gain) in enumerate(zip(model_names, accuracies, acc_gains)):
+        color = '#1f77b4' if i == 0 else '#2ca02c'
+        ax.bar(name, acc * 100, color=color, width=0.45)
+        label = f'{acc * 100:.2f}%' if i == 0 else f'{acc * 100:.2f}%\n(+{gain * 100:.2f} pp)'
+        ax.text(i, acc * 100 + 0.8, label, ha='center', va='bottom', fontsize=10, fontweight='bold')
+    ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Accuracy Comparison', fontsize=13, fontweight='bold')
+    ax.set_ylim(0, 110)
     plt.tight_layout()
-    plot_path = OUTPUT_DIR / "baseline_comparison.png"
+    plot_path = OUTPUT_DIR / "baseline_accuracy.png"
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     plt.close()
+    logger.info(f"Accuracy plot saved to {plot_path}")
 
-    logger.info(f"Comparison plot saved to {plot_path}")
+    # === 图2：F1 Score ===
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for i, (name, f1, gain) in enumerate(zip(model_names, f1_scores, f1_gains)):
+        color = '#ff7f0e' if i == 0 else '#2ca02c'
+        ax.bar(name, f1 * 100, color=color, width=0.45)
+        label = f'{f1 * 100:.2f}%' if i == 0 else f'{f1 * 100:.2f}%\n(+{gain * 100:.2f} pp)'
+        ax.text(i, f1 * 100 + 0.8, label, ha='center', va='bottom', fontsize=10, fontweight='bold')
+    ax.set_ylabel('F1 Score (%)', fontsize=12, fontweight='bold')
+    ax.set_title('F1 Score Comparison', fontsize=13, fontweight='bold')
+    ax.set_ylim(0, 110)
+    plt.tight_layout()
+    plot_path = OUTPUT_DIR / "baseline_f1.png"
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    logger.info(f"F1 plot saved to {plot_path}")
 
 
 def run_baseline_study():

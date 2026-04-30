@@ -19,12 +19,12 @@ LABEL_MAP = {-1: 0, 1: 1}  # NLOS→0, LOS→1
 DEFAULT_LOCATION_PREFIXES = ["P2", "P3", "P4", "P5", "P6", "P7", "P8"]
 
 # 数据划分默认值
-DEFAULT_SPLIT_MODE = "outdomain"  # 默认划分模式：indomain 或 outdomain
+DEFAULT_SPLIT_MODE = "indomain"  # 默认划分模式：indomain 或 outdomain
 DEFAULT_TEST_SIZE = 0.3  # 内域模式：70% 训练，30% 测试
 DEFAULT_RANDOM_SEED = 42
 
 # STCA 模型输入参数
-DEFAULT_WINDOW_SIZE = 8      # 论文最优值 (Section IV-F)
+DEFAULT_WINDOW_SIZE = 22      # 论文最优值 (Section IV-F)
 DEFAULT_MAX_SATELLITES = 20   # 单历元最大卫星数（实际数据通常 ≤ 20）
 
 # 基础数据参数

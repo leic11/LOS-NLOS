@@ -42,3 +42,4 @@ docs
 !docs/thesis/
 !BUPTBachelorThesis/docs/
 BUPTBachelorThesis/figures
+*.pdf

@@ -17,7 +17,7 @@ SPATIAL_DROPOUT = 0.5           # Dropout 比率
 # ============================================================================
 # 时间编码器 (LSTM-TFE Module) 默认参数
 # ============================================================================
-TEMPORAL_EMBED_DIM = 32         # 时间嵌入维度
+TEMPORAL_EMBED_DIM = 16         # 时间嵌入维度
 TEMPORAL_NUM_LAYERS = 1         # LSTM 层数
 TEMPORAL_DROPOUT = 0.5          # Dropout 比率
 TEMPORAL_BIDIRECTIONAL = False  # 单向 LSTM

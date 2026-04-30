@@ -4,23 +4,27 @@
 ============================
 
 用途：
-    探究不同超参数对 GNSS NLOS 检测模型性能的影响。
+    探究空间模块和时间模块关键超参数对 GNSS NLOS 检测模型性能的影响。
 
 实验设置：
     - 使用 outdomain 数据划分模式
     - 控制变量法：每次只改变一个超参数，其他保持基准值不变
     - 基准配置只测试 1 次，每个超参数测试 2 个变化值
-    - 总计测试 17 次 = 1 次基准 + 8 个超参数 × 2 个变化值
+    - 总计测试 11 次 = 1 次基准 + 5 个超参数 × 2 个变化值
 
-基准配置（来自 modules/constants.py）：
-    模型架构参数：
+基准配置（对标论文 Table III 基础模型）：
+    空间模块（AAM）：
     - SPATIAL_EMBED_DIM = 32       (空间嵌入维度)
-    - SPATIAL_NUM_HEADS = 4        (注意力头数)
+    - SPATIAL_NUM_HEADS = 1        (注意力头数)
     - SPATIAL_NUM_LAYERS = 1       (空间编码器层数)
-    - SPATIAL_D_FF = 64            (前馈网络维度，embed_dim * 2)
-    - DROPOUT = 0.5                (统一 Dropout，应用到所有模块)
+    - DROPOUT = 0.1                (统一 Dropout，应用到所有模块)
+
+    时间模块（LSTM-TFE）：
     - TEMPORAL_EMBED_DIM = 32      (时间嵌入维度)
-    - TEMPORAL_NUM_LAYERS = 1      (LSTM 层数)
+
+    固定参数（不测试）：
+    - SPATIAL_D_FF = 64            (前馈网络维度，embed_dim * 2)
+    - TEMPORAL_NUM_LAYERS = 4      (LSTM 层数)
     - CROSS_ATTN_EMBED_DIM = 16    (交叉注意力维度)
     - CROSS_ATTN_NUM_HEADS = 4     (交叉注意力头数)
     - SPARSE_EMBED_DIM = 64        (稀疏嵌入维度)
@@ -31,28 +35,22 @@
     - BATCH_SIZE = 16
     - EPOCHS = 50
 
-测试的超参数及取值（10 个）：
+测试的超参数及取值（5 个）：
     1. 空间嵌入维度：16, 64（基准 32）
-    2. 时间嵌入维度：16, 64（基准 32）
+    2. 注意力头数：2, 4（基准 1）
     3. 空间层数：2, 4（基准 1）
-    4. LSTM 层数：2, 4（基准 1）
-    5. 注意力头数：1, 8（基准 4）
-    6. Dropout 率：0.1, 0.3（基准 0.5）
-    7. 交叉注意力维度：8, 64（基准 16）
-    8. 交叉注意力头数：2, 8（基准 4）
-    9. 稀疏嵌入维度：32, 128（基准 64）
-    10. 分类器隐藏层：[32,16], [64,32]（基准 [16,8]）
+    4. Dropout 率：0.3, 0.5（基准 0.1）
+    5. 时间嵌入维度：16, 64（基准 32）
 
-输出表格格式（共 22 行）：
-    - 15 列：10 个超参数列 + 5 个性能指标列（Loss/Acc/Pre/Rec/F1）
-    - 第 1 行：基准配置（显示 10 个超参数基准值 + 5 大指标 + 参数量）
-    - 第 2-21 行：10 个超参数 × 2 个变化值 = 20 行，未变化的参数显示"-"
-    - 第 22 行：最优组合汇总（F1 提升）
+输出表格格式（7 行）：
+    - 6 列：5 个超参数列 + 5 个性能指标列（Loss/Acc/Pre/Rec/F1）
+    - 第 1 行：基准配置 + 5 大指标 + 参数量
+    - 第 2-11 行：5 个超参数 × 2 个变化值 = 10 行
+    - 第 11 行：最优组合汇总（F1 提升）
 
 输出：
-    - 终端：18 行 × 13 列汇总表格
+    - 终端：汇总表格
     - 文件：hyperparam_study_results.csv/json（详细结果）
-    - 文件：hyperparam_study_summary.csv（每个超参数最佳值）
 
 使用方式：
     python -m work.ablation_hyperparam
@@ -79,6 +77,7 @@ sys.path.insert(0, str(MODULES_DIR))
 STCA_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(STCA_DIR))
 
+from modules.constants import DEVICE
 from utils.logger_config import setup_logger
 from utils.seed_utils import set_seed
 from modules.stca_model import STCAModel
@@ -88,35 +87,26 @@ from data_loading.constants import DEFAULT_MAX_SATELLITES, DEFAULT_WINDOW_SIZE
 logger = setup_logger(__name__)
 
 # ============================================================================
-# 基准配置（来自 modules/constants.py）
+# 基准配置（对标论文 Table III 基础模型 M1）
 # ============================================================================
 
-from modules.constants import (
-    SPATIAL_EMBED_DIM, SPATIAL_NUM_HEADS, SPATIAL_NUM_LAYERS, SPATIAL_D_FF, SPATIAL_DROPOUT,
-    TEMPORAL_EMBED_DIM, TEMPORAL_NUM_LAYERS,
-    CROSS_ATTN_EMBED_DIM, CROSS_ATTN_NUM_HEADS,
-    SPARSE_EMBED_DIM,
-    CLASSIFIER_HIDDEN_DIMS,
-    LEARNING_RATE, EPOCHS, BATCH_SIZE, RANDOM_SEED, DEVICE,
-)
-
-# 基准配置字典
+# 基准配置（硬编码，对标论文设置）
 BASE_CONFIG = {
-    "spatial_embed_dim": SPATIAL_EMBED_DIM,       # 32
-    "spatial_num_heads": SPATIAL_NUM_HEADS,       # 4
-    "spatial_num_layers": SPATIAL_NUM_LAYERS,     # 1
-    "spatial_d_ff": SPATIAL_D_FF,                 # 64 - embed_dim * 2
-    "dropout": SPATIAL_DROPOUT,                   # 0.5 - 统一应用到所有模块
-    "temporal_embed_dim": TEMPORAL_EMBED_DIM,     # 32
-    "temporal_num_layers": TEMPORAL_NUM_LAYERS,   # 1
-    "cross_attn_embed_dim": CROSS_ATTN_EMBED_DIM, # 16
-    "cross_attn_num_heads": CROSS_ATTN_NUM_HEADS, # 4
-    "sparse_embed_dim": SPARSE_EMBED_DIM,         # 64
-    "classifier_hidden_dims": CLASSIFIER_HIDDEN_DIMS,  # [16, 8]
-    "learning_rate": LEARNING_RATE,               # 1e-4
-    "batch_size": BATCH_SIZE,                     # 16
-    "epochs": EPOCHS,                             # 50
-    "random_seed": RANDOM_SEED,                   # 42
+    "spatial_embed_dim": 32,         # 空间嵌入维度
+    "spatial_num_heads": 1,          # 注意力头数
+    "spatial_num_layers": 1,         # 空间编码器层数
+    "spatial_d_ff": 64,              # 前馈网络维度，embed_dim * 2
+    "dropout": 0.1,                  # 统一 Dropout
+    "temporal_embed_dim": 32,        # 时间嵌入维度
+    "temporal_num_layers": 1,        # LSTM 层数
+    "cross_attn_embed_dim": 16,      # 交叉注意力维度
+    "cross_attn_num_heads": 4,       # 交叉注意力头数
+    "sparse_embed_dim": 64,          # 稀疏嵌入维度
+    "classifier_hidden_dims": [16, 8],  # 分类器隐藏层
+    "learning_rate": 1e-4,
+    "batch_size": 16,
+    "epochs": 50,
+    "random_seed": 42,
     "max_satellites": DEFAULT_MAX_SATELLITES,
     "window_size": DEFAULT_WINDOW_SIZE,
     "split_mode": "outdomain",
@@ -131,48 +121,27 @@ BASE_CONFIG = {
 HYPERPARAM_CONFIGS = {
     "spatial_embed_dim": {
         "name": "空间嵌入维度",
-        "values": [16, 64],  # 测试值（基准值 32 已测试）
-    },
-    "temporal_embed_dim": {
-        "name": "时间嵌入维度",
-        "values": [16, 64],  # 测试值（基准值 32 已测试）
-    },
-    "spatial_num_layers": {
-        "name": "空间层数",
-        "values": [2, 4],  # 测试值（基准值 1 已测试）
-    },
-    "temporal_num_layers": {
-        "name": "LSTM 层数",
-        "values": [2, 4],  # 测试值（基准值 1 已测试）
+        "values": [16, 64],  # 基准 32
     },
     "spatial_num_heads": {
         "name": "注意力头数",
-        "values": [1, 8],  # 测试值（基准值 4 已测试）
+        "values": [2, 4],  # 基准 1
+    },
+    "spatial_num_layers": {
+        "name": "空间层数",
+        "values": [2, 4],  # 基准 1
     },
     "dropout": {
         "name": "Dropout 率",
-        "values": [0.1, 0.3],  # 测试值（基准值 0.5 已测试）
-        # 注意：此 dropout 会同时应用到所有模块（空间编码器、时间编码器、交叉注意力、分类器）
+        "values": [0.3, 0.5],  # 基准 0.1
     },
-    "cross_attn_embed_dim": {
-        "name": "交叉注意力维度",
-        "values": [8, 64],  # 测试值（基准值 16 已测试）
-    },
-    "cross_attn_num_heads": {
-        "name": "交叉注意力头数",
-        "values": [2, 8],  # 测试值（基准值 4 已测试）
-    },
-    "sparse_embed_dim": {
-        "name": "稀疏嵌入维度",
-        "values": [32, 128],  # 测试值（基准值 64 已测试）
-    },
-    "classifier_hidden_dims": {
-        "name": "分类器隐藏层",
-        "values": [[32, 16], [64, 32]],  # 测试值（基准值 [16,8] 已测试）
+    "temporal_embed_dim": {
+        "name": "时间嵌入维度",
+        "values": [16, 64],  # 基准 32
     },
 }
 
-# 8 个测试的超参数键（用于表格列显示）
+# 5 个测试的超参数键（用于表格列显示）
 HYPERPARAM_KEYS = list(HYPERPARAM_CONFIGS.keys())
 
 # ============================================================================
@@ -458,31 +427,21 @@ def run_hyperparam_study():
 
     # 表格列宽定义
     COL_SPATIAL_EMBED = 8
-    COL_TEMPORAL_EMBED = 6
-    COL_SPATIAL_LAYERS = 2
+    COL_SPATIAL_HEADS = 6
+    COL_SPATIAL_LAYERS = 6
     COL_DROPOUT = 6
-    COL_TEMPORAL_LAYERS = 2
-    COL_CA_EMBED = 8       # 交叉注意力维度
-    COL_CA_HEADS = 8       # 交叉注意力头数
-    COL_SPARSE_EMBED = 6
-    COL_CLASSIFIER_HIDDEN = 9
-    COL_SPATIAL_HEADS = 2
+    COL_TEMPORAL_EMBED = 8
 
-    # 表格头部（10 个超参数列 + 5 个性能指标列 = 15 列）
+    # 表格头部（5 个超参数列 + 5 个性能指标列 = 10 列）
     header = (f"{'模型配置':<15} | "
               f"{'s_embed':>{COL_SPATIAL_EMBED}} | "
-              f"{'t_embed':>{COL_TEMPORAL_EMBED}} | "
+              f"{'s_head':>{COL_SPATIAL_HEADS}} | "
               f"{'s_lyr':>{COL_SPATIAL_LAYERS}} | "
               f"{'drop':>{COL_DROPOUT}} | "
-              f"{'t_lyr':>{COL_TEMPORAL_LAYERS}} | "
-              f"{'ca_emb':>{COL_CA_EMBED}} | "
-              f"{'ca_head':>{COL_CA_HEADS}} | "
-              f"{'sp_emb':>{COL_SPARSE_EMBED}} | "
-              f"{'cls_hid':>{COL_CLASSIFIER_HIDDEN}} | "
-              f"{'s_head':>{COL_SPATIAL_HEADS}} | "
+              f"{'t_embed':>{COL_TEMPORAL_EMBED}} | "
               f"Loss   | Acc    | Pre    | Rec    | F1")
     print(header)
-    print("-"*200)
+    print("-"*130)
 
     # 辅助函数：格式化参数值（不变的显示"-"）
     def fmt_param(value, baseline_value, width=6):
@@ -494,53 +453,37 @@ def run_hyperparam_study():
 
     # 第 1 行：基准配置（显示所有基准值）
     baseline_row = (f"{'[基准配置]':<15} | "
-                   f"{str(BASE_CONFIG['spatial_embed_dim']):>8} | "
-                   f"{str(BASE_CONFIG['temporal_embed_dim']):>6} | "
-                   f"{str(BASE_CONFIG['spatial_num_layers']):>2} | "
-                   f"{str(BASE_CONFIG['dropout']):>6} | "
-                   f"{str(BASE_CONFIG['temporal_num_layers']):>2} | "
-                   f"{str(BASE_CONFIG['cross_attn_embed_dim']):>8} | "
-                   f"{str(BASE_CONFIG['cross_attn_num_heads']):>8} | "
-                   f"{str(BASE_CONFIG['sparse_embed_dim']):>6} | "
-                   f"{str(BASE_CONFIG['classifier_hidden_dims']):>9} | "
-                   f"{str(BASE_CONFIG['spatial_num_heads']):>2} | "
+                   f"{str(BASE_CONFIG['spatial_embed_dim']):>{COL_SPATIAL_EMBED}} | "
+                   f"{str(BASE_CONFIG['spatial_num_heads']):>{COL_SPATIAL_HEADS}} | "
+                   f"{str(BASE_CONFIG['spatial_num_layers']):>{COL_SPATIAL_LAYERS}} | "
+                   f"{str(BASE_CONFIG['dropout']):>{COL_DROPOUT}} | "
+                   f"{str(BASE_CONFIG['temporal_embed_dim']):>{COL_TEMPORAL_EMBED}} | "
                    f"{baseline_loss:<6.4f} {baseline_acc:<6.4f} {baseline_pre:<6.4f} {baseline_rec:<6.4f} {baseline_f1:<6.4f}")
     print(baseline_row)
     print(f"  参数量：{baseline_params:,}")
-    print("-"*200)
+    print("-"*130)
 
-    # 第 2-21 行：每个超参数的变化值（10 个超参数 × 2 个值 = 20 行）
+    # 第 2-11 行：每个超参数的变化值（5 个超参数 × 2 个值 = 10 行）
     for param_key, param_config in HYPERPARAM_CONFIGS.items():
         param_results = df[df["param_key"] == param_key]
         for _, row in param_results.iterrows():
-            # 获取当前行的 10 个超参数值
-            spatial_embed = fmt_param(row['spatial_embed_dim'], BASE_CONFIG['spatial_embed_dim'], 8)
-            temporal_embed = fmt_param(row['temporal_embed_dim'], BASE_CONFIG['temporal_embed_dim'], 6)
-            spatial_layers = fmt_param(row['spatial_num_layers'], BASE_CONFIG['spatial_num_layers'], 2)
-            dropout = fmt_param(row['dropout'], BASE_CONFIG['dropout'], 6)
-            temporal_layers = fmt_param(row['temporal_num_layers'], BASE_CONFIG['temporal_num_layers'], 2)
-            ca_embed = fmt_param(row['cross_attn_embed_dim'], BASE_CONFIG['cross_attn_embed_dim'], 8)
-            ca_heads = fmt_param(row['cross_attn_num_heads'], BASE_CONFIG['cross_attn_num_heads'], 8)
-            sparse_embed = fmt_param(row['sparse_embed_dim'], BASE_CONFIG['sparse_embed_dim'], 6)
-            classifier_hidden = fmt_param(row['classifier_hidden_dims'], str(BASE_CONFIG['classifier_hidden_dims']), 9)
-            spatial_heads = fmt_param(row['spatial_num_heads'], BASE_CONFIG['spatial_num_heads'], 2)
+            spatial_embed = fmt_param(row['spatial_embed_dim'], BASE_CONFIG['spatial_embed_dim'], COL_SPATIAL_EMBED)
+            spatial_heads = fmt_param(row['spatial_num_heads'], BASE_CONFIG['spatial_num_heads'], COL_SPATIAL_HEADS)
+            spatial_layers = fmt_param(row['spatial_num_layers'], BASE_CONFIG['spatial_num_layers'], COL_SPATIAL_LAYERS)
+            dropout = fmt_param(row['dropout'], BASE_CONFIG['dropout'], COL_DROPOUT)
+            temporal_embed = fmt_param(row['temporal_embed_dim'], BASE_CONFIG['temporal_embed_dim'], COL_TEMPORAL_EMBED)
 
             row_text = (f"{param_config['name']:<15} | "
                        f"{spatial_embed} | "
-                       f"{temporal_embed} | "
+                       f"{spatial_heads} | "
                        f"{spatial_layers} | "
                        f"{dropout} | "
-                       f"{temporal_layers} | "
-                       f"{ca_embed} | "
-                       f"{ca_heads} | "
-                       f"{sparse_embed} | "
-                       f"{classifier_hidden} | "
-                       f"{spatial_heads} | "
+                       f"{temporal_embed} | "
                        f"{row['test_loss']:<6.4f} {row['accuracy']:<6.4f} {row['precision']:<6.4f} {row['recall']:<6.4f} {row['f1_score']:<6.4f}")
             print(row_text)
 
-    # 第 18 行：最优配置汇总（找出 F1 最高的配置，包括基准配置）
-    print("-"*200)
+    # 第 11 行：最优配置汇总（找出 F1 最高的配置，包括基准配置）
+    print("-"*130)
 
     # 找出 F1 最高的配置（包括基准配置）
     best_idx = df["f1_score"].idxmax()
@@ -553,32 +496,22 @@ def run_hyperparam_study():
     if is_best_baseline:
         # 最优就是基准配置，显示基准值
         best_spatial_embed = BASE_CONFIG["spatial_embed_dim"]
-        best_temporal_embed = BASE_CONFIG["temporal_embed_dim"]
+        best_spatial_heads = BASE_CONFIG["spatial_num_heads"]
         best_spatial_layers = BASE_CONFIG["spatial_num_layers"]
         best_dropout = BASE_CONFIG["dropout"]
-        best_temporal_layers = BASE_CONFIG["temporal_num_layers"]
-        best_ca_embed = BASE_CONFIG["cross_attn_embed_dim"]
-        best_ca_heads = BASE_CONFIG["cross_attn_num_heads"]
-        best_sparse_embed = BASE_CONFIG["sparse_embed_dim"]
-        best_classifier_hidden = BASE_CONFIG["classifier_hidden_dims"]
-        best_spatial_heads = BASE_CONFIG["spatial_num_heads"]
-        print(f"{'[最优组合]':<15} | {str(best_spatial_embed):>8} | {str(best_temporal_embed):>6} | {str(best_spatial_layers):>2} | {str(best_dropout):>6} | {str(best_temporal_layers):>2} | {str(best_ca_embed):>8} | {str(best_ca_heads):>8} | {str(best_sparse_embed):>6} | {str(best_classifier_hidden):>9} | {str(best_spatial_heads):>2} | "
+        best_temporal_embed = BASE_CONFIG["temporal_embed_dim"]
+        print(f"{'[最优组合]':<15} | {str(best_spatial_embed):>{COL_SPATIAL_EMBED}} | {str(best_spatial_heads):>{COL_SPATIAL_HEADS}} | {str(best_spatial_layers):>{COL_SPATIAL_LAYERS}} | {str(best_dropout):>{COL_DROPOUT}} | {str(best_temporal_embed):>{COL_TEMPORAL_EMBED}} | "
               f"{baseline_loss:<6.4f} {baseline_acc:<6.4f} {baseline_pre:<6.4f} {baseline_rec:<6.4f} {baseline_f1:<6.4f}")
         print(f"  基准配置即为最优，无提升 ({improvement:+.4f})")
     else:
         # 最优是某个测试配置，显示其参数值
         best_spatial_embed = int(best_row['spatial_embed_dim'])
-        best_temporal_embed = int(best_row['temporal_embed_dim'])
+        best_spatial_heads = int(best_row['spatial_num_heads'])
         best_spatial_layers = int(best_row['spatial_num_layers'])
         best_dropout = float(best_row['dropout'])
-        best_temporal_layers = int(best_row['temporal_num_layers'])
-        best_ca_embed = int(best_row['cross_attn_embed_dim'])
-        best_ca_heads = int(best_row['cross_attn_num_heads'])
-        best_sparse_embed = int(best_row['sparse_embed_dim'])
-        best_classifier_hidden = best_row['classifier_hidden_dims']
-        best_spatial_heads = int(best_row['spatial_num_heads'])
+        best_temporal_embed = int(best_row['temporal_embed_dim'])
 
-        print(f"{'[最优组合]':<15} | {best_spatial_embed:>8} | {best_temporal_embed:>6} | {best_spatial_layers:>2} | {best_dropout:>6} | {best_temporal_layers:>2} | {best_ca_embed:>8} | {best_ca_heads:>8} | {best_sparse_embed:>6} | {best_classifier_hidden:>9} | {best_spatial_heads:>2} | "
+        print(f"{'[最优组合]':<15} | {str(best_spatial_embed):>{COL_SPATIAL_EMBED}} | {str(best_spatial_heads):>{COL_SPATIAL_HEADS}} | {str(best_spatial_layers):>{COL_SPATIAL_LAYERS}} | {str(best_dropout):>{COL_DROPOUT}} | {str(best_temporal_embed):>{COL_TEMPORAL_EMBED}} | "
               f"{best_row['test_loss']:<6.4f} {best_row['accuracy']:<6.4f} {best_row['precision']:<6.4f} {best_row['recall']:<6.4f} {best_row['f1_score']:<6.4f}")
         print(f"  相比基准：F1 提升 {improvement:+.4f} ({improvement/baseline_f1*100:+.2f}%)")
 
