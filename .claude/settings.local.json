@@ -44,7 +44,10 @@
       "Read(//c/Users/86195/Desktop/DevLab/**)",
       "Bash(done)",
       "Bash(find . -name *.png -path */figures/*)",
-      "Bash(pandoc BUPTBachelorThesis/docs/北邮-本科毕设-雷操.docx -t plain)"
+      "Bash(pandoc BUPTBachelorThesis/docs/北邮-本科毕设-雷操.docx -t plain)",
+      "Bash(kpsewhich BUPTthesisbachelor.sty)",
+      "Bash(find C:/Users/86195/Desktop/DevLab -name BUPTthesisbachelor*)",
+      "Bash(latexmk -xelatex main.tex)"
     ]
   }
 }

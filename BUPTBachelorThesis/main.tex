@@ -1,9 +1,9 @@
 % \def\thelstlisting{} % 已在 BUPTthesisbachelor.cls 中定义
 
 %不需要区分奇偶页的请使用下面一行
-\documentclass[a4paper,AutoFakeBold,oneside,12pt]{book}
+%\documentclass[a4paper,AutoFakeBold,oneside,12pt]{book}
 %需要区分奇偶页的（即每一章第一页一定在奇数页上）请使用下面一行
-%\documentclass[a4paper,AutoFakeBold,openright,12pt]{book}
+\documentclass[a4paper,AutoFakeBold,openright,12pt]{book}
 \usepackage{BUPTthesisbachelor}
 \usepackage{setspace}
 \usepackage{algorithm}
@@ -27,8 +27,10 @@
 % \includepdf[pages=-]{docs/scoreTable.pdf}
 
 % 诚信声明
-\blankmatter
+\let\oldcleardoublepage\cleardoublepage
+\let\cleardoublepage\clearpage
 \includepdf[pages=-]{docs/statement.pdf}
+\let\cleardoublepage\oldcleardoublepage
 
 \include{abstract}  % Abstract (includes main.cfg internally)
 
@@ -61,18 +63,18 @@
 %%%%%%%%%%%%%%%%%%%%%%% Main Area ENDs Here %%%%%%%%%%%%%%%%%%%%%%%%
 
 % 参考文献
-\clearpage\phantomsection\addcontentsline{toc}{chapter}{参考文献}
+\cleardoublepage\phantomsection\addcontentsline{toc}{chapter}{参考文献}
 \bibliographystyle{buptbachelor}
 \refbodyfont{\bibliography{docs/ref}}
 
 % 致谢
-\clearpage
+\cleardoublepage
 \chapter*{致谢}
 \phantomsection\addcontentsline{toc}{chapter}{致谢}
 \normalsize\thankwords
 
 % 附录
-\clearpage
+\cleardoublepage
 \phantomsection\addcontentsline{toc}{chapter}{附录}
 \chapter*{附录1\quad 缩略语表}
 
