@@ -30,7 +30,7 @@
     \centering
     \caption{STCA 模型主要符号定义}
     \label{tab:symbols}
-    \begin{tabular}{cl}
+    \begin{tabular}{cc}
     \toprule
     \textbf{符号} & \textbf{含义} \\
     \midrule
@@ -149,7 +149,7 @@
     \begin{equation}
     \text{Attention}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}\left(\frac{\bm{Q}\bm{K}^{\mathsf{T}}}{\sqrt{d_k}}\right)\bm{V}
     \end{equation}
-    其中 $d_k = d_s / H$ 为每个注意力头的维度，$H = 4$ 为注意力头数。多头机制将嵌入维度分割为多个子空间，模型可同时关注不同子空间中的卫星关系。
+    其中 $d_k = d_s / H$ 为每个注意力头的维度，$H = 4$ 为注意力头数。多头机制将嵌入维度分割为多个子空间，模型可同时关注不同子空间中的卫星关系。从物理意义上，期望空间注意力权重能够自动聚焦于更易被建筑物遮挡的低高度角卫星，因为这类卫星的NLOS概率显著高于高高度角卫星。
 
     自注意力操作后，通过残差连接和层归一化（LayerNorm）稳定训练过程：
     \begin{equation}
@@ -193,7 +193,7 @@
     \bm{o}_t &= \sigma(\bm{W}_o [\bm{h}_{t-1}, \bm{x}_t] + \bm{b}_o) \\
     \bm{h}_t &= \bm{o}_t \odot \tanh(\bm{C}_t)
     \end{align}
-    其中 $\bm{f}_t$、$\bm{i}_t$、$\bm{o}_t$ 分别为遗忘门、输入门和输出门；$\tilde{\bm{C}}_t$ 为候选记忆状态；$\bm{C}_t$ 和 $\bm{h}_t$ 分别为更新后的单元状态和隐藏状态；$\odot$ 表示逐元素乘法。遗忘门控制丢弃多少历史信息，输入门控制吸收多少新信息，输出门控制输出多少当前状态。
+    其中 $\bm{f}_t$、$\bm{i}_t$、$\bm{o}_t$ 分别为遗忘门、输入门和输出门；$\tilde{\bm{C}}_t$ 为候选记忆状态；$\bm{C}_t$ 和 $\bm{h}_t$ 分别为更新后的单元状态和隐藏状态；$\odot$ 表示逐元素乘法。遗忘门控制丢弃多少历史信息，输入门控制吸收多少新信息，输出门控制输出多少当前状态。从物理意义上，期望LSTM隐藏状态能够捕捉信号质量随时间演化的过渡轨迹，例如载噪比从高值逐渐下降并切换为NLOS状态的过程，以及卫星从LOS传播转变为NLOS传播的时序模式。
 
 \subsection{单向 LSTM 的选择}
 

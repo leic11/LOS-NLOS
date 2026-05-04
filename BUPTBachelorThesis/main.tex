@@ -74,14 +74,13 @@
 \normalsize\thankwords
 
 % 附录
-\cleardoublepage
-\phantomsection\addcontentsline{toc}{chapter}{附录}
 \chapter*{附录1\quad 缩略语表}
+\phantomsection\addcontentsline{toc}{chapter}{附录1\quad 缩略语表}
 
 \begingroup
 \renewcommand{\arraystretch}{1}
 \small
-\begin{tabular}{@{}p{2.5cm}p{6.5cm}p{4cm}@{}}
+\begin{longtable}{@{}p{2.5cm}p{6.5cm}p{4cm}@{}}
 AAM & Attention Aggregation Module & 注意力聚合模块 \\
 Adam & Adaptive Moment Estimation & 自适应矩估计 \\
 AUC & Area Under Curve & 曲线下面积 \\
@@ -115,7 +114,7 @@ ROC & Receiver Operating Characteristic & 接收者操作特征 \\
 SVM & Support Vector Machine & 支持向量机 \\
 STCA & Spatiotemporal Cross-Attention & 时空交叉注意力 \\
 XAI & Explainable Artificial Intelligence & 可解释性人工智能 \\
-\end{tabular}
+\end{longtable}
 \endgroup
 
 % % 开题报告

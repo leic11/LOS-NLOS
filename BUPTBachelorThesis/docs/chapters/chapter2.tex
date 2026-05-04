@@ -17,9 +17,9 @@
     \clearpage
     \begin{figure}[htbp]
     \centering
-    \subfloat[平面图]{\includegraphics[width=0.55\textwidth]{figures/LOS-NLOS.png}\label{fig:los-nlos-a}}
+    \subfloat[平面图]{\includegraphics[width=0.45\textwidth]{figures/LOS-NLOS.png}\label{fig:los-nlos-a}}
     \hfill
-    \subfloat[俯视图]{\includegraphics[width=0.42\textwidth]{figures/canyon_signal_topview.png}\label{fig:los-nlos-b}}
+    \subfloat[俯视图]{\includegraphics[width=0.45\textwidth]{figures/canyon_signal_topview.png}\label{fig:los-nlos-b}}
     \caption{城市峡谷中LOS和NLOS信号传播路径}
     \label{fig:los-nlos}
     \end{figure}
@@ -34,7 +34,7 @@
 
     从信号处理的角度，多径效应表现为接收信号波形的细微畸变，可以通过改进接收机天线设计（如窄相关器、多径估计延迟锁定环）来部分抑制。而NLOS传播表现为信号到达角的显著偏移和载噪比的大幅下降，无法通过接收机内部信号处理完全消除，必须在定位解算阶段进行识别和剔除。
 
-    在实际城市环境中，多径效应与NLOS传播往往同时存在\cite{mohanty2024survey, zheng2025stacking}。同一颗卫星的信号可能在不同历元经历不同的传播模式：当卫星运行至开阔方向时表现为LOS或轻微多径，当运行至建筑物遮挡方向时则转变为NLOS。此外，Transformer架构也被引入GNSS信号传播建模\cite{applied_soft2025, li2023nlos}。
+    在实际城市环境中，多径效应与NLOS传播往往同时存在\cite{mohanty2024survey, zheng2025stacking}。同一颗卫星的信号可能在不同历元经历不同的传播模式：当卫星运行至开阔方向时表现为LOS或轻微多径，当运行至建筑物遮挡方向时则转变为NLOS。
 
 \subsection{城市峡谷环境下的信号衰落特性}
 
@@ -148,7 +148,7 @@
 
     基于3D城市模型的几何约束法利用城市三维建筑模型（GIS数据）与卫星星历信息，通过几何可见性分析预判信号传播路径是否被建筑物遮挡。对于给定的接收机位置（可由初始粗略定位获得）和每颗可见卫星的瞬时位置，该方法计算卫星到接收机的视线路径，判断该路径是否与3D建筑模型相交。若相交，则判定为NLOS；若不 相交，则判定为LOS。
 
-    该类方法物理意义明确、判别精度较高，不受接收机观测噪声的影响。在3D模型数据完备的城市中，几何约束法的NLOS判别准确率可达$80\%$以上。然而，该方法存在明显的部署局限性：高度依赖高精度、实时更新的3D建筑模型数据，而全球大多数城市缺乏此类数据；3D模型的获取与更新成本高昂，且存储和计算开销较大；当接收机位置本身存在较大误差时（如初始定位受NLOS污染），几何可见性判断的准确性将显著下降，形成"鸡生蛋、蛋生鸡"的循环依赖问题。
+    该类方法物理意义明确、判别精度较高，不受接收机观测噪声的影响。在3D模型数据完备的城市中，几何约束法的NLOS判别准确率可达$80\%$以上。然而，该方法存在明显的部署局限性：高度依赖高精度、实时更新的3D建筑模型数据，而全球大多数城市缺乏此类数据；3D模型的获取与更新成本高昂，且存储和计算开销较大；当接收机位置本身存在较大误差时（如初始定位受NLOS污染），几何可见性判断的准确性将显著下降，形成接收机位置误差与几何可见性判断之间的循环依赖困境。
 
 \subsection{基于统计检验的一致性检测法}
 
@@ -173,7 +173,7 @@
 \setlength{\belowcaptionskip}{10pt}
 \caption{传统NLOS检测方法性能对比}
 \label{tab:traditional_methods_comparison}
-\begin{tabular}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{2.8cm}>{\raggedright\arraybackslash}p{2.8cm}>{\raggedright\arraybackslash}p{2.8cm}c}
+\begin{tabular}{>{\centering\arraybackslash}m{2.2cm}>{\centering\arraybackslash}m{2.8cm}>{\centering\arraybackslash}m{2.8cm}>{\centering\arraybackslash}m{2.8cm}c}
 \toprule
 \textbf{方法} & \textbf{原理} & \textbf{优势} & \textbf{局限性} & \textbf{典型准确率} \\
 \midrule

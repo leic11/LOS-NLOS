@@ -175,7 +175,7 @@ M11 & 0.0587 & 0.7596 & 0.7057 & 0.7375 & 0.7213 & - & - & - & 0.3 & - \\
 \centering
 \caption{内域与外域模式性能对比}
 \label{tab:indomain_outdomain}
-\begin{tabular}{lcccccc}
+\begin{tabular}{ccccccc}
 \toprule
 划分模式 & Accuracy & Precision & Recall & F1 & ROC-AUC & PR-AUC \\
 \midrule
@@ -189,22 +189,23 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 
 图~\ref{fig:roc_curve_comparison} 展示了内域和外域模式下的 ROC 曲线对比。内域模式下 AUC 达到 0.9976，接近完美分类器；外域模式下 AUC 为 0.8583，有所下降，但判别能力仍然较好。
 
+\clearpage
 \begin{figure}[htbp]
 \centering
 \hspace{0.05\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/roc_curve_indomain.png}
 \caption{内域模式 (AUC = 0.9976)}
 \end{subfigure}
 \hspace{0.1\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/roc_curve_outdomain.png}
 \caption{外域模式 (AUC = 0.8583)}
 \end{subfigure}
 \hspace{0.05\textwidth}
-\caption{受试者工作特征曲线（ROC）对比}
+\caption{ROC曲线对比}
 \label{fig:roc_curve_comparison}
 \end{figure}
 
@@ -213,13 +214,13 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 \begin{figure}[htbp]
 \centering
 \hspace{0.05\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/pr_curve_indomain.png}
 \caption{内域模式 (AUC = 0.9977)}
 \end{subfigure}
 \hspace{0.1\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/pr_curve_outdomain.png}
 \caption{外域模式 (AUC = 0.7880)}
@@ -231,16 +232,17 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 
 图~\ref{fig:confusion_matrix_comparison} 展示了测试集混淆矩阵对比。内域模式下模型对 LOS 和 NLOS 样本均有较高的识别准确率；外域模式下 NLOS 样本的误检率（FP）有所上升，模型在未见场景中对 NLOS 信号的判别能力有所下降。
 
+\clearpage
 \begin{figure}[htbp]
 \centering
 \hspace{0.05\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/confusion_matrix_indomain.png}
 \caption{内域模式}
 \end{subfigure}
 \hspace{0.1\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/confusion_matrix_outdomain.png}
 \caption{外域模式}
@@ -268,7 +270,6 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 
 图~\ref{fig:confusion_ablation} 展示了三种配置下的混淆矩阵对比。随着模块逐步添加，模型对 NLOS 样本的识别能力逐步提升。
 
-\clearpage
 \begin{figure}[htbp]
 \centering
 \begin{subfigure}[t]{0.3\textwidth}
@@ -297,13 +298,13 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 \begin{figure}[htbp]
 \centering
 \hspace{0.05\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/baseline_accuracy.png}
 \caption{准确率对比}
 \end{subfigure}
 \hspace{0.1\textwidth}
-\begin{subfigure}[t]{0.39\textwidth}
+\begin{subfigure}[t]{0.40\textwidth}
 \centering
 \includegraphics[width=\textwidth]{figures/baseline_f1.png}
 \caption{F1 分数对比}
@@ -315,7 +316,7 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 
 \subsection{结果分析}
 
-从 Concat 到 CrossAttn，准确率提升 8.64 个百分点，F1 提升 7.34 个百分点。该模块通过自适应时空特征交互，建立了卫星几何与信号质量之间的关联。
+从 Concat 到 CrossAttn，准确率提升 8.65 个百分点，F1 提升 7.34 个百分点。该模块通过自适应时空特征交互，建立了卫星几何与信号质量之间的关联。
 
 稀疏表示层进一步带来提升。从 CrossAttn 到 Full STCA，准确率提升 6.3 个百分点，F1 提升 4.61 个百分点。可学习分段非线性激活函数增强了融合特征的判别能力。
 
@@ -325,7 +326,7 @@ Outdomain & 85.98\% & 83.82\% & 82.87\% & 83.34\% & 0.8583 & 0.7880 \\
 \centering
 \caption{模块消融实验结果汇总}
 \label{tab:module_ablation}
-\begin{tabular}{lccccc}
+\begin{tabular}{cccccc}
 \toprule
 模型配置 & Accuracy & Precision & Recall & F1 & ROC-AUC \\
 \midrule
@@ -348,4 +349,4 @@ Concat (基线) & 71.03\% & 65.32\% & 74.94\% & 69.69\% & 0.7512 \\
 
 \section{本章小结}
 
-本章进行了四组实验。超参数消融实验对 5 个关键超参数进行敏感性分析，确认了默认配置（$d_s=32$，$H=4$，$L=1$，$p_\text{drop}=0.5$，$d_t=16$）。时间窗口消融实验测试了 14 种窗口大小，$w=22$ 时性能最优（Accuracy=85.98\%，F1=83.34\%）。域内域外实验对比了 indomain（97.66\% 准确率，ROC-AUC=0.9976）和 outdomain（85.98\% 准确率，ROC-AUC=0.8583）两种模式。模块消融实验采用三组对比，交叉注意力带来约 8.64\% 的准确率提升，稀疏表示层额外带来约 6.30\% 的提升。此外，本章汇总了模块消融实验结果。STCA 模型在 GNSS NLOS 检测任务中表现稳定，各功能模块均带来可量化的性能提升，且模型参数量小。本章还讨论了模型优势的物理意义及当前实验的局限性。下一章将对全文进行总结，并展望后续研究方向。
+本章进行了四组实验。超参数消融实验对 5 个关键超参数进行敏感性分析，确认了默认配置（$d_s=32$，$H=4$，$L=1$，$p_\text{drop}=0.5$，$d_t=16$）。时间窗口消融实验测试了 14 种窗口大小，$w=22$ 时性能最优（Accuracy=85.98\%，F1=83.34\%）。域内域外实验对比了 indomain（97.66\% 准确率，ROC-AUC=0.9976）和 outdomain（85.98\% 准确率，ROC-AUC=0.8583）两种模式。模块消融实验采用三组对比，交叉注意力带来约 8.65\% 的准确率提升，稀疏表示层额外带来约 6.30\% 的提升。此外，本章汇总了模块消融实验结果。STCA 模型在 GNSS NLOS 检测任务中表现稳定，各功能模块均带来可量化的性能提升，且模型参数量小。本章还讨论了模型优势的物理意义及当前实验的局限性。下一章将对全文进行总结，并展望后续研究方向。
