@@ -1,10 +1,10 @@
-\chapter{STCA 模型设计}
+\chapter{时空交叉注意力模型设计}
 
 \section{引言}
 
     第~2~章综述了 GNSS NLOS 信号检测领域的国内外研究进展。基于几何约束的方法实现简单但泛化能力有限；传统机器学习方法可融合多维特征但仍依赖手工特征工程；深度学习方法可自动学习特征表示，但现有方法普遍存在未能同时利用时空特征、跨场景泛化能力不足等问题。
 
-    针对上述问题，本文采用基于时空交叉注意力（Spatio\-temporal Cross\-Attention, STCA）的 NLOS 信号检测方法，该方法基于文献~\cite{zeng2024spatiotemporal}的工作。该方法的核心设计理念是：GNSS 信号同时包含空间分布特性（同一历元内多颗卫星的几何构型）和时间演化规律（信号质量随时间的动态变化），同时建模这两个维度，有助于实现对 NLOS 信号的准确判别。此外，引入可学习的稀疏表示层，通过非线性激活函数增强融合特征的判别能力。
+    针对上述问题，本文采用STCA进行NLOS信号检测。其核心设计理念是：GNSS信号同时包含空间分布特性（同一历元内多颗卫星的几何构型）和时间演化规律（信号质量随时间的动态变化），同时建模这两个维度，有助于实现对NLOS信号的准确判别。此外，引入可学习的稀疏表示层，通过非线性激活函数增强融合特征的判别能力。
 
     本章介绍 STCA 模型的算法设计，包括模型的整体架构与数据流、数据预处理流程、空间编码器、时序编码器、交叉注意力融合模块、稀疏表示层以及分类器与损失函数的设计原理与数学表述，最后给出算法伪代码。
 
@@ -182,7 +182,7 @@
 
 \subsection{LSTM 原理与门控机制}
 
-    时序编码器采用单向长短期记忆网络（Long Short-Term Memory, LSTM）处理时间窗口内的信号演化模式。LSTM 通过门控机制有效捕捉长程时间依赖，适合建模 NLOS 状态的时序连续性。此外，Xu等人\cite{xu2025conv_lstm}提出利用卷积LSTM从接收机早期-晚期相关器层面捕获NLOS特征，进一步证明了深度时序模型在NLOS检测中的有效性。
+    时序编码器采用单向LSTM处理时间窗口内的信号演化模式。LSTM 通过门控机制有效捕捉长程时间依赖，适合建模 NLOS 状态的时序连续性。此外，Xu等人\cite{xu2025conv_lstm}提出利用卷积LSTM从接收机早期-晚期相关器层面捕获NLOS特征，进一步证明了深度时序模型在NLOS检测中的有效性。
 
     设时序输入为 $\bm{X}_{\text{temporal}} \in \mathbb{R}^{B \times T \times 4}$，其中 $T$ 为窗口大小。LSTM 在第 $t$ 个时间步的门控方程为：
     \begin{align}
@@ -315,75 +315,6 @@
 \subsection{优化器与训练策略}
 
     模型采用 Adam 优化器进行参数更新，$\beta_1 = 0.9$，$\beta_2 = 0.98$，学习率固定为 $10^{-4}$。训练过程中不对学习率进行动态调整，以固定学习率完成全部轮次训练，确保模型参数稳定收敛。
-
-\section{模型训练算法}
-
-    STCA 模型的前向传播算法如算法~\ref{alg:stca-forward} 所示。
-
-\begin{algorithm}[htbp]
-\caption{STCA 模型前向传播算法}
-\label{alg:stca-forward}
-\begin{algorithmic}[1]
-\Require 空间输入 $\bm{X}_{\text{spatial}} \in \mathbb{R}^{B \times N \times 4}$，时序输入 $\bm{X}_{\text{temporal}} \in \mathbb{R}^{B \times T \times 4}$
-\Ensure NLOS 概率预测 $\hat{y} \in [0, 1]$
-
-\State \Comment{空间编码：多头自注意力}
-\State $\bm{H} \gets \text{Linear}_{4 \to d_s}(\bm{X}_{\text{spatial}})$
-\State $\bm{Q}, \bm{K}, \bm{V} \gets \bm{H}\bm{W}_Q, \bm{H}\bm{W}_K, \bm{H}\bm{W}_V$
-\State $\bm{H}' \gets \text{LayerNorm}(\bm{H} + \text{softmax}(\bm{Q}\bm{K}^{\mathsf{T}}/\sqrt{d_k})\bm{V})$
-\State $\bm{H}'' \gets \text{LayerNorm}(\bm{H}' + \text{FFN}(\bm{H}'))$
-\State $\bm{c}_{\text{spatial}} \gets \frac{1}{N}\sum_{i=1}^{N} \bm{H}''_{i}$ \Comment{全局平均池化}
-
-\State \Comment{时序编码：单向 LSTM}
-\State $\bm{h}_0 \gets \bm{0}$
-\For{$t = 1$ \textbf{to} $T$}
-    \State $\bm{h}_t \gets \text{LSTM}(\bm{X}_{\text{temporal}}^{(t)}, \bm{h}_{t-1})$
-\EndFor
-\State $\bm{c}_{\text{temporal}} \gets \bm{h}_T$
-
-\State \Comment{交叉注意力融合}
-\State $\bm{Q}_{\text{cross}} \gets \bm{c}_{\text{temporal}}\bm{W}_Q, \; \bm{K}_{\text{cross}} \gets \bm{c}_{\text{spatial}}\bm{W}_K, \; \bm{V}_{\text{cross}} \gets \bm{c}_{\text{spatial}}\bm{W}_V$
-\State $\bm{A}_{\text{cross}} \gets \text{softmax}(\bm{Q}_{\text{cross}}\bm{K}_{\text{cross}}^{\mathsf{T}}/\sqrt{d})$
-\State $\bm{F}_{\text{attn}} \gets \bm{A}_{\text{cross}}\bm{V}_{\text{cross}}$
-\State $\bm{F}_{\text{fused}} \gets \text{Concat}(\bm{F}_{\text{attn}}, \bm{c}_{\text{temporal}})$
-
-\State \Comment{稀疏表示与分类}
-\State $\bm{Z}_0 \gets \text{LayerNorm}(\text{ReLU}(\bm{W}_p \bm{F}_{\text{fused}} + \bm{b}_p))$
-\State $\bm{Z} \gets \Omega(\Omega(\Omega(\bm{Z}_0)))$ \Comment{三层级联稀疏化}
-\State $\hat{y} \gets \sigma(\bm{W}_3 \text{ReLU}(\bm{W}_2 \text{ReLU}(\bm{W}_1 \bm{Z} + \bm{b}_1) + \bm{b}_2) + \bm{b}_3)$
-
-\State \Return $\hat{y}$
-\end{algorithmic}
-\end{algorithm}
-
-    STCA 模型的训练算法如算法~\ref{alg:stca-train} 所示。
-
-\begin{algorithm}[htbp]
-\caption{STCA 模型训练算法}
-\label{alg:stca-train}
-\begin{algorithmic}[1]
-\Require 训练集 $\mathcal{D} = \{(\bm{X}_{\text{spatial}}^{(i)}, \bm{X}_{\text{temporal}}^{(i)}, y_i)\}_{i=1}^{M}$，学习率 $\eta$，训练轮数 $E$，批次大小 $B$
-\Ensure 训练好的模型参数 $\Theta$
-
-\State 初始化模型参数 $\Theta$
-\State 初始化 Adam 优化器（$\beta_1 = 0.9, \beta_2 = 0.98, \eta = 10^{-4}$）
-\For{$\text{epoch} = 1$ \textbf{to} $E$}
-    \State $\mathcal{D}_{\text{shuffled}} \gets \text{Shuffle}(\mathcal{D})$
-    \For{每个批次 $\mathcal{B} \subset \mathcal{D}_{\text{shuffled}}$}
-        \State $\mathcal{L}_{\text{batch}} \gets 0$
-        \For{$(\bm{X}_{\text{spatial}}, \bm{X}_{\text{temporal}}, y) \in \mathcal{B}$}
-            \State $\hat{y} \gets \text{STCA\_Forward}(\bm{X}_{\text{spatial}}, \bm{X}_{\text{temporal}}; \Theta)$
-            \State $\mathcal{L} \gets -[y \log(\hat{y}) + (1 - y) \log(1 - \hat{y})]$ \Comment{二元交叉熵}
-            \State $\mathcal{L}_{\text{batch}} \gets \mathcal{L}_{\text{batch}} + \mathcal{L}$
-        \EndFor
-        \State $\mathcal{L}_{\text{avg}} \gets \mathcal{L}_{\text{batch}} / |\mathcal{B}|$
-        \State $\nabla_{\Theta} \gets \text{Backprop}(\mathcal{L}_{\text{avg}}, \Theta)$
-        \State $\Theta \gets \text{Adam}(\Theta, \nabla_{\Theta})$
-    \EndFor
-\EndFor
-\State \Return $\Theta$
-\end{algorithmic}
-\end{algorithm}
 
 \section{本章小结}
 

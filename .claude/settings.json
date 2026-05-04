@@ -39,7 +39,15 @@
       "Bash(D:/desktop/app/install/Python313/python.exe data_loading/main.py --help)",
       "Bash(Get-Content \"C:\\\\Users\\\\86195\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-86195-Desktop-DevLab\\\\d5c16174-0705-4ac6-bc24-1e709104866a\\\\tasks\\\\b1welqppg.output\" -Tail 50)",
       "Bash(tee outputs/stca/ablation/sparse_dim/training.log)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(powershell -Command \"Get-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\docs\\\\chapters\\\\chapter3.tex' | Select-Object -Index 6\")",
+      "Bash(powershell -Command \"\\(Get-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\docs\\\\chapters\\\\chapter3.tex'\\)[6]\")",
+      "Bash(powershell -Command \"\\(Get-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\docs\\\\chapters\\\\chapter3.tex'\\)[0..10]\")",
+      "Bash(powershell -Command \"\\(Get-Content 'c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\docs\\\\chapters\\\\chapter1.tex'\\)[36]\")",
+      "Bash(powershell -Command \"[System.IO.File]::ReadAllLines\\('c:\\\\Users\\\\86195\\\\Desktop\\\\DevLab\\\\BUPTBachelorThesis\\\\docs\\\\chapters\\\\chapter1.tex'\\)[36]\")",
+      "Bash(kpsewhich newtxmath.sty)",
+      "Bash(mpm --list)",
+      "Bash(findstr -i \"math font times\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\86195\\Desktop\\DevLab\\stca\\data_loading",
